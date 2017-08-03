@@ -15,3 +15,8 @@
 
 # Logs
 *.log
+# ENV VARS
+*.env
+# DB
+*.db
+*.db-journal
