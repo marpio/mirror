@@ -3,9 +3,27 @@
 
 [[projects]]
   branch = "master"
-  name = "github.com/nfnt/resize"
+  name = "github.com/jmoiron/sqlx"
+  packages = [".","reflectx"]
+  revision = "d9bd385d68c068f1fabb5057e3dedcbcbb039d0f"
+
+[[projects]]
+  name = "github.com/joho/godotenv"
   packages = ["."]
-  revision = "891127d8d1b52734debe1b3c3d7e747502b6c366"
+  revision = "726cc8b906e3d31c70a9671c90a13716a8d3f50d"
+  version = "v1.1"
+
+[[projects]]
+  name = "github.com/kurin/blazer"
+  packages = ["b2","base","internal/b2types","internal/blog"]
+  revision = "612082ed2430716569f1ec816fc6ade849020816"
+  version = "v0.1.0"
+
+[[projects]]
+  name = "github.com/mattn/go-sqlite3"
+  packages = ["."]
+  revision = "ca5e3819723d8eeaf170ad510e7da1d6d2e94a08"
+  version = "v1.2.0"
 
 [[projects]]
   branch = "go1"
@@ -13,9 +31,21 @@
   packages = ["exif","tiff"]
   revision = "709fab3d192d7c62f86043caff1e7e3fb0f42bd8"
 
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/crypto"
+  packages = ["nacl/secretbox","poly1305","salsa20/salsa"]
+  revision = "558b6879de74bc843225cde5686419267ff707ca"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/net"
+  packages = ["context"]
+  revision = "f5079bd7f6f74e23c4d65efa0f4ce14cbd6a3c0f"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "6366650765fa5c0b97c2e93014efe93785c6c05873ff8ad88382e0f51f3458e3"
+  inputs-digest = "03fafedd85d806ed4b16f192a698119352abd9909c3837e610f33c0cdc0e1e8a"
   solver-name = "gps-cdcl"
   solver-version = 1
