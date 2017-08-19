@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/rand"
@@ -8,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"image/jpeg"
 	"io"
 	"io/ioutil"
 	"log"
@@ -22,6 +24,7 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/kurin/blazer/b2"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
 	"golang.org/x/crypto/nacl/secretbox"
 )
@@ -230,7 +233,7 @@ func isImgToOld(createdAt time.Time) bool {
 	return createdAt.Year() < time.Now().Add(-1*time.Hour*24*365*10).Year()
 }
 
-func readExifMetadata(r io.Reader) (time.Time, []byte, error) {
+func readExifMetadata(r io.ReadSeeker) (time.Time, []byte, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return time.Time{}, nil, err
@@ -241,7 +244,14 @@ func readExifMetadata(r io.Reader) (time.Time, []byte, error) {
 	}
 	thumbnail, err := x.JpegThumbnail()
 	if err != nil {
-		return time.Time{}, nil, err
+		r.Seek(0, 0)
+		img, err := jpeg.Decode(r)
+		m := resize.Thumbnail(200, 200, img, resize.NearestNeighbor)
+		var b bytes.Buffer
+		writer := bufio.NewWriter(&b)
+		jpeg.Encode(writer, m, nil)
+		writer.Flush()
+		return imgCreatedAt, b.Bytes(), err
 	}
 	return imgCreatedAt, thumbnail, nil
 }
