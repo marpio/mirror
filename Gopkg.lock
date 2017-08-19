@@ -26,6 +26,12 @@
   version = "v1.2.0"
 
 [[projects]]
+  branch = "master"
+  name = "github.com/nfnt/resize"
+  packages = ["."]
+  revision = "891127d8d1b52734debe1b3c3d7e747502b6c366"
+
+[[projects]]
   branch = "go1"
   name = "github.com/rwcarlsen/goexif"
   packages = ["exif","tiff"]
@@ -46,6 +52,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "03fafedd85d806ed4b16f192a698119352abd9909c3837e610f33c0cdc0e1e8a"
+  inputs-digest = "73a33d6393f83e709ff0c2abdb9848a3f9628a9f13e0eae72f3e1e36eb2f542c"
   solver-name = "gps-cdcl"
   solver-version = 1
