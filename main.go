@@ -137,7 +137,7 @@ func syncImage(ctx context.Context, imgPath string, bucket *b2.Bucket, db *sqlx.
 		return "", err
 	}
 	imgContentReader := bytes.NewReader(imgContent)
-	imgCreatedAt, thumbnail, err := readExifMetadata(imgContentReader)
+	imgCreatedAt, thumbnail, err := readExifMetadata(imgPath, imgContentReader)
 	if err != nil {
 		log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", imgPath, err)
 		return "", err
@@ -233,14 +233,35 @@ func isImgToOld(createdAt time.Time) bool {
 	return createdAt.Year() < time.Now().Add(-1*time.Hour*24*365*10).Year()
 }
 
-func readExifMetadata(r io.ReadSeeker) (time.Time, []byte, error) {
+func readExifMetadata(imgPath string, r io.ReadSeeker) (time.Time, []byte, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return time.Time{}, nil, err
 	}
 	imgCreatedAt, err := x.DateTime()
 	if err != nil {
-		return time.Time{}, nil, err
+		containingdDir := filepath.Dir(imgPath)
+		matches, _ := filepath.Glob(filepath.Join(containingdDir, "*.jpg"))
+		for _, f := range matches {
+			if f == imgPath {
+				continue
+			}
+			reader, err := os.Open(f)
+			if err != nil {
+				continue
+			}
+			defer reader.Close()
+			other, err := exif.Decode(reader)
+			if err != nil {
+				continue
+			}
+			imgCreatedAt, err = other.DateTime()
+			if err != nil {
+				continue
+			}
+			imgCreatedAt = imgCreatedAt.Add(time.Microsecond * time.Duration(10))
+			break
+		}
 	}
 	thumbnail, err := x.JpegThumbnail()
 	if err != nil {
