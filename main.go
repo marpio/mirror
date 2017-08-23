@@ -81,7 +81,7 @@ func main() {
 	paths := getAllImagesPaths(imgRootDir)
 	log.Printf("Found %v images.", len(paths))
 	localState := syncLocalImagesWithBackblaze(ctx, paths, bucket, db, encryptionKey)
-	log.Println("Uploading new and updating existing images compleated.")
+	log.Println("Sync compleated.")
 	for _, imgID := range localState {
 		log.Printf("ImgID: %v", imgID)
 	}
@@ -151,7 +151,6 @@ func syncImage(ctx context.Context, imgPath string, bucket *b2.Bucket, db *sqlx.
 		log.Printf("Error calculating img hash: %v", err)
 		return "", err
 	}
-	log.Printf("Calculated img hash: %v", imgHash)
 	encryptedThumbnail, err := encrypt(encryptionKey, thumbnail)
 	if err != nil {
 		log.Printf("Error encrypting thumbnail: %v - err msg: %v", imgPath, err)
@@ -170,56 +169,61 @@ func syncImage(ctx context.Context, imgPath string, bucket *b2.Bucket, db *sqlx.
 		log.Printf("Error quering existing image %v - err: %v", imgID, err)
 		return "", err
 	}
+
 	imgExists := len(existingImgs) > 0
 	existingImgChanged := imgExists && existingImgs[0].ImgHash != imgHash
-	if existingImgChanged {
+	if imgExists && !existingImgChanged {
+		log.Print("Existing image unchanged - do nothing and process next img")
+		return imgID, nil
+	} else if existingImgChanged {
 		log.Print("Existing image changed.")
 		_, err := db.Exec("DELETE FROM img WHERE img_id=$1", imgID)
 		if err != nil {
 			log.Printf("Image with the ID = %v could not be deleted - err: %v", imgID, err)
 			return "", err
 		}
-	} else if !imgExists {
-		b2thumbnailName := generateUniqueFileName("thumb", imgPath, imgCreatedAt)
-		b2imgName := generateUniqueFileName("orig", imgPath, imgCreatedAt)
-
-		thumbnailb2Writer := createB2Writer(ctx, bucket, b2thumbnailName)
-		thumbnailReader := bytes.NewReader(encryptedThumbnail)
-		imgb2Writer := createB2Writer(ctx, bucket, b2imgName)
-		imgReader := bytes.NewReader(encryptedImg)
-
-		tx := db.MustBegin()
-
-		img := &image{imgID, imgCreatedAt, imgHash, b2imgName, b2thumbnailName}
-		if _, err := tx.NamedExec("INSERT INTO img (img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name) VALUES (:img_id, :created_at, :img_hash, :b2_img_name, :b2_thumbnail_name)", img); err != nil {
-			log.Printf("Error inserting into DB: %v", err)
-			return "", err
-		}
-		log.Printf("Uploading img %v", imgPath)
-		if _, err := io.Copy(thumbnailb2Writer, thumbnailReader); err != nil {
-			log.Printf("Error copying to b2: %v", err)
-			return "", err
-		}
-		if err := thumbnailb2Writer.Close(); err != nil {
-			log.Printf("Error closing thumbnailb2Writer: %v", err)
-			return "", err
-		}
-		if _, err := io.Copy(imgb2Writer, imgReader); err != nil {
-			log.Printf("Error copying to b2: %v", err)
-			return "", err
-		}
-		if err := imgb2Writer.Close(); err != nil {
-			log.Printf("Error closing imgb2Writer: %v", err)
-			return "", err
-		}
-		log.Printf("Uploaded img %v", imgPath)
-		err = tx.Commit()
-		if err != nil {
-			log.Printf("Error commiting to the db: %v", err)
-			return "", err
-		}
 	}
+
+	b2thumbnailName := generateUniqueFileName("thumb", imgPath, imgCreatedAt)
+	b2imgName := generateUniqueFileName("orig", imgPath, imgCreatedAt)
+
+	tx := db.MustBegin()
+
+	img := &image{imgID, imgCreatedAt, imgHash, b2imgName, b2thumbnailName}
+	if _, err := tx.NamedExec("INSERT INTO img (img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name) VALUES (:img_id, :created_at, :img_hash, :b2_img_name, :b2_thumbnail_name)", img); err != nil {
+		log.Printf("Error inserting into DB: %v", err)
+		return "", err
+	}
+	log.Printf("Starting upload to b2 - img %v", imgPath)
+
+	if err := uploadToB2(ctx, bucket, b2thumbnailName, encryptedThumbnail); err != nil {
+		log.Printf("Error uploading to b2: %v - img: %v", err, imgPath)
+		return "", err
+	}
+	if err := uploadToB2(ctx, bucket, b2imgName, encryptedImg); err != nil {
+		log.Printf("Error uploading to b2: %v - img: %v", err, imgPath)
+		return "", err
+	}
+	log.Printf("Upload compleated for img %v", imgPath)
+	err = tx.Commit()
+	if err != nil {
+		log.Printf("Error commiting to the db: %v", err)
+		return "", err
+	}
+
 	return imgID, nil
+}
+
+func uploadToB2(ctx context.Context, bucket *b2.Bucket, imgFileName string, payload []byte) error {
+	b2Writer := createB2Writer(ctx, bucket, imgFileName)
+	reader := bytes.NewReader(payload)
+	if _, err := io.Copy(b2Writer, reader); err != nil {
+		return err
+	}
+	if err := b2Writer.Close(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func createB2Writer(ctx context.Context, bucket *b2.Bucket, imgFileName string) *b2.Writer {
