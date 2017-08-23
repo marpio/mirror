@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"image/jpeg"
 	"io"
 	"io/ioutil"
@@ -46,14 +47,14 @@ type image struct {
 }
 
 func main() {
-	//f, err := os.OpenFile("output.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	//if err != nil {
-	//	log.Fatalf("error opening file: %v", err)
-	//}
-	//defer f.Close()
-	//log.SetOutput(f)
-	err := godotenv.Load("settings.env")
+	f, err := os.OpenFile("output.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
+		log.Fatalf("error opening file: %v", err)
+	}
+	defer f.Close()
+	log.SetOutput(f)
+
+	if err := godotenv.Load("settings.env"); err != nil {
 		log.Fatal("Error loading .env file")
 	}
 
@@ -169,16 +170,18 @@ func syncImage(ctx context.Context, imgPath string, bucket *b2.Bucket, db *sqlx.
 		log.Printf("Error quering existing image %v - err: %v", imgID, err)
 		return "", err
 	}
-	if len(existingImgs) > 0 && existingImgs[0].ImgHash != imgHash {
+	imgExists := len(existingImgs) > 0
+	existingImgChanged := imgExists && existingImgs[0].ImgHash != imgHash
+	if existingImgChanged {
 		log.Print("Existing image changed.")
 		_, err := db.Exec("DELETE FROM img WHERE img_id=$1", imgID)
 		if err != nil {
 			log.Printf("Image with the ID = %v could not be deleted - err: %v", imgID, err)
 			return "", err
 		}
-	} else if len(existingImgs) == 0 {
+	} else if !imgExists {
 		b2thumbnailName := generateUniqueFileName("thumb", imgPath, imgCreatedAt)
-		b2imgName := generateUniqueFileName("", imgPath, imgCreatedAt)
+		b2imgName := generateUniqueFileName("orig", imgPath, imgCreatedAt)
 
 		thumbnailb2Writer := createB2Writer(ctx, bucket, b2thumbnailName)
 		thumbnailReader := bytes.NewReader(encryptedThumbnail)
@@ -192,6 +195,7 @@ func syncImage(ctx context.Context, imgPath string, bucket *b2.Bucket, db *sqlx.
 			log.Printf("Error inserting into DB: %v", err)
 			return "", err
 		}
+		log.Printf("Uploading img %v", imgPath)
 		if _, err := io.Copy(thumbnailb2Writer, thumbnailReader); err != nil {
 			log.Printf("Error copying to b2: %v", err)
 			return "", err
@@ -208,6 +212,7 @@ func syncImage(ctx context.Context, imgPath string, bucket *b2.Bucket, db *sqlx.
 			log.Printf("Error closing imgb2Writer: %v", err)
 			return "", err
 		}
+		log.Printf("Uploaded img %v", imgPath)
 		err = tx.Commit()
 		if err != nil {
 			log.Printf("Error commiting to the db: %v", err)
@@ -240,41 +245,69 @@ func readExifMetadata(imgPath string, r io.ReadSeeker) (time.Time, []byte, error
 	}
 	imgCreatedAt, err := x.DateTime()
 	if err != nil {
-		containingdDir := filepath.Dir(imgPath)
-		matches, _ := filepath.Glob(filepath.Join(containingdDir, "*.jpg"))
-		for _, f := range matches {
-			if f == imgPath {
-				continue
-			}
-			reader, err := os.Open(f)
-			if err != nil {
-				continue
-			}
-			defer reader.Close()
-			other, err := exif.Decode(reader)
-			if err != nil {
-				continue
-			}
-			imgCreatedAt, err = other.DateTime()
-			if err != nil {
-				continue
-			}
-			imgCreatedAt = imgCreatedAt.Add(time.Microsecond * time.Duration(10))
-			break
+		imgCreatedAt, err = findNeighborImgCreatedAt(imgPath)
+		if err != nil {
+			return time.Time{}, nil, err
 		}
 	}
 	thumbnail, err := x.JpegThumbnail()
 	if err != nil {
-		r.Seek(0, 0)
-		img, err := jpeg.Decode(r)
-		m := resize.Thumbnail(200, 200, img, resize.NearestNeighbor)
-		var b bytes.Buffer
-		writer := bufio.NewWriter(&b)
-		jpeg.Encode(writer, m, nil)
-		writer.Flush()
-		return imgCreatedAt, b.Bytes(), err
+		thumbnail, err = resizeImg(r)
+		if err != nil {
+			return time.Time{}, nil, err
+		}
 	}
 	return imgCreatedAt, thumbnail, nil
+}
+
+func resizeImg(r io.ReadSeeker) ([]byte, error) {
+	r.Seek(0, 0)
+	img, err := jpeg.Decode(r)
+	if err != nil {
+		return nil, err
+	}
+	m := resize.Thumbnail(200, 200, img, resize.NearestNeighbor)
+	var b bytes.Buffer
+	writer := bufio.NewWriter(&b)
+	if err := jpeg.Encode(writer, m, nil); err != nil {
+		return nil, err
+	}
+	if err := writer.Flush(); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+func findNeighborImgCreatedAt(imgPath string) (time.Time, error) {
+	var imgCreatedAt time.Time
+	containingdDir := filepath.Dir(imgPath)
+	matches, _ := filepath.Glob(filepath.Join(containingdDir, "*.jpg"))
+	for _, imgfile := range matches {
+		imgCreatedAt = func(f string) time.Time {
+			if f == imgPath {
+				return time.Time{}
+			}
+			reader, err := os.Open(f)
+			if err != nil {
+				return time.Time{}
+			}
+			defer reader.Close()
+			other, err := exif.Decode(reader)
+			if err != nil {
+				return time.Time{}
+			}
+			imgCreatedAt, err = other.DateTime()
+			if err != nil {
+				return time.Time{}
+			}
+			return imgCreatedAt.Add(time.Millisecond * time.Duration(1))
+		}(imgfile)
+		foundCreatedAt := imgCreatedAt != time.Time{}
+		if foundCreatedAt {
+			return imgCreatedAt, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("Coldn't extract CreatedAt for file %v", imgPath)
 }
 
 func calculateHash(r io.Reader) (string, error) {
@@ -316,7 +349,7 @@ func decrypt(encryptionKey string, encryptedData []byte) ([]byte, error) {
 	copy(decryptNonce[:], encryptedData[:24])
 	decrypted, ok := secretbox.Open(nil, encryptedData[24:], &decryptNonce, &secretKey)
 	if !ok {
-		return nil, errors.New("could not decrypt data")
+		return nil, errors.New("Could not decrypt data")
 	}
 
 	return decrypted, nil
