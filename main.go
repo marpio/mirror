@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"flag"
 	"fmt"
 	"image/jpeg"
 	"io"
@@ -46,6 +47,137 @@ type image struct {
 	B2ThumbnailName string    `db:"b2_thumbnail_name"`
 }
 
+type fileStore interface {
+	uploadToB2(imgFileName string, payload []byte) error
+	downloadFile(encryptionKey, src, dst string)
+}
+
+type b2Store struct {
+	bucket *b2.Bucket
+	ctx    context.Context
+}
+
+func newb2Store(ctx context.Context, b2id string, b2key string, bucketName string) *b2Store {
+	b2Client, err := b2.NewClient(ctx, b2id, b2key)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	bucket, err := b2Client.Bucket(ctx, bucketName)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return &b2Store{bucket: bucket, ctx: ctx}
+}
+
+func (b2 *b2Store) downloadFile(encryptionKey, src, dst string) {
+	r := b2.bucket.Object(src).NewReader(ctx)
+	defer r.Close()
+
+	var b bytes.Buffer
+	writer := bufio.NewWriter(&b)
+	if _, err := io.Copy(writer, r); err != nil {
+		log.Fatal("Booom!!!")
+	}
+	writer.Flush()
+	encryptedData := b.Bytes()
+	decryptedData, _ := decrypt(encryptionKey, encryptedData)
+	f, err := os.Create(dst)
+	if err != nil {
+		log.Fatal("Booom!!!")
+	}
+	//r.ConcurrentDownloads = downloads
+	if _, err := io.Copy(f, bytes.NewReader(decryptedData)); err != nil {
+		log.Fatal("Booom!!!")
+	}
+}
+
+func (b2 *b2Store) uploadToB2(imgFileName string, payload []byte) error {
+	imgObj := b2.bucket.Object(imgFileName)
+	b2Writer := imgObj.NewWriter(b2.ctx)
+	reader := bytes.NewReader(payload)
+	if _, err := io.Copy(b2Writer, reader); err != nil {
+		return err
+	}
+	if err := b2Writer.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
+type imgFileDto struct {
+	Path      string
+	CreatedAt time.Time
+}
+type action func(tx *sqlx.Tx) error
+type datastore interface {
+	executeInsideTran(actionFn action) error
+	getImgByID(imgID string) ([]image, error)
+	insertImg(tx *sqlx.Tx, imgEntity *image) error
+	updateExisting(imgID string, imgContentHash string) error
+}
+
+type db struct {
+	db *sqlx.DB
+}
+
+func newDB(dbName string) *db {
+	dbInstance := sqlx.MustConnect("sqlite3", dbName)
+	dbInstance.MustExec(createSchema)
+	return &db{db: dbInstance}
+}
+
+func (datastore *db) executeInsideTran(actionFn action) error {
+	tx := datastore.db.MustBegin()
+	if err := actionFn(tx); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (datastore *db) getImgByID(imgID string) ([]image, error) {
+	var existingImgs = []image{}
+	if err := datastore.db.Select(&existingImgs, "SELECT img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name FROM img WHERE img_id=$1 LIMIT 1;", imgID); err != nil {
+		log.Printf("Error quering existing image %v - err: %v", imgID, err)
+		return nil, err
+	}
+	return existingImgs, nil
+}
+
+func (datastore *db) insertImg(tx *sqlx.Tx, imgEntity *image) error {
+	if _, err := tx.NamedExec("INSERT INTO img (img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name) VALUES (:img_id, :created_at, :img_hash, :b2_img_name, :b2_thumbnail_name)", imgEntity); err != nil {
+		log.Printf("Error inserting into DB: %v", err)
+		return err
+	}
+	return nil
+}
+
+func (datastore *db) updateExisting(imgID string, imgContentHash string) error {
+	existingImgs, err := datastore.getImgByID(imgID)
+	if err != nil {
+		log.Printf("Error quering existing image %v - err: %v", imgID, err)
+		return err
+	}
+	imgExists := len(existingImgs) > 0
+	existingImgChanged := imgExists && existingImgs[0].ImgHash != imgContentHash
+	if imgExists && !existingImgChanged {
+		log.Print("Existing image unchanged - do nothing and process next img")
+		return nil
+	} else if existingImgChanged {
+		log.Print("Existing image changed.")
+		_, err := datastore.db.Exec("DELETE FROM img WHERE img_id=$1", imgID)
+		if err != nil {
+			log.Printf("Image with the ID = %v could not be deleted - err: %v", imgID, err)
+			return err
+		}
+	}
+	return nil
+}
+
 func main() {
 	f, err := os.OpenFile("output.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -63,55 +195,70 @@ func main() {
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
 
-	db := sqlx.MustConnect("sqlite3", "img.db")
 	ctx := context.Background()
-	b2Client, err := b2.NewClient(ctx, b2id, b2key)
-	if err != nil {
-		log.Fatal(err)
-	}
 
-	bucket, err := b2Client.Bucket(ctx, bucketName)
-	if err != nil {
-		log.Fatal(err)
-	}
-	db.MustExec(createSchema)
+	imgStore := newb2Store(ctx, b2id, b2key, bucketName)
+	db := newDB("img.db")
 
-	imgRootDir := os.Args[1]
+	imgRootDir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
+	imgName := flag.String("download", "", "File to download and decrypt")
+	flag.Parse()
 
-	paths := getAllImagesPaths(imgRootDir)
-	log.Printf("Found %v images.", len(paths))
-	localState := syncLocalImagesWithBackblaze(ctx, paths, bucket, db, encryptionKey)
-	log.Println("Sync compleated.")
-	for _, imgID := range localState {
-		log.Printf("ImgID: %v", imgID)
+	if *imgRootDir != "" {
+		imgs := getImages(*imgRootDir)
+		log.Printf("Found %v images.", len(imgs))
+		localState := syncLocalImagesWithBackblaze(ctx, imgs, imgStore, db, encryptionKey)
+		log.Println("Sync compleated.")
+		for _, imgID := range localState {
+			log.Printf("ImgID: %v", imgID)
+		}
+	} else if *imgName != "" {
+		imgStore.downloadFile(encryptionKey, *imgName, "/home/piotr/Documents/imgtest/decrypted.jpg")
 	}
 }
 
-func getAllImagesPaths(rootPath string) []string {
-	paths := make([]string, 0)
+func getImages(rootPath string) []*imgFileDto {
+	imgFiles := make([]*imgFileDto, 0)
+
 	var isJpegPredicate = func(path string, f os.FileInfo) bool {
 		return !f.IsDir() && (strings.HasSuffix(strings.ToLower(f.Name()), ".jpg") || strings.HasSuffix(strings.ToLower(f.Name()), ".jpeg"))
+	}
+	var isImgToOldPredicate = func(createdAt time.Time) bool {
+		return createdAt.Year() < time.Now().Add(-1*time.Hour*24*365*10).Year()
 	}
 	err := filepath.Walk(rootPath, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			log.Printf("Error while walking the directory structure: %v", err.Error())
 		}
 		if isJpegPredicate(path, fi) {
-			paths = append(paths, path)
+			f, err := os.Open(path)
+			if err != nil {
+				log.Printf("Error opening file %v - err msg: %v", path, err)
+				return err
+			}
+			defer f.Close()
+			imgCreatedAt, err := extractCreatedAt(path, f)
+			if err != nil {
+				log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", path, err)
+				return err
+			}
+			if !isImgToOldPredicate(imgCreatedAt) {
+				imgFiles = append(imgFiles, &imgFileDto{Path: path, CreatedAt: imgCreatedAt})
+			}
 		}
 		return nil
 	})
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	return paths
+	return imgFiles
 }
 
-func syncLocalImagesWithBackblaze(ctx context.Context, paths []string, bucket *b2.Bucket, db *sqlx.DB, encryptionKey string) []string {
+func syncLocalImagesWithBackblaze(ctx context.Context, images []*imgFileDto, imgStore fileStore, db datastore, encryptionKey string) []string {
 	imgIds := make([]string, 0)
 
-	for _, p := range paths {
-		imgID, err := syncImage(ctx, p, bucket, db, encryptionKey)
+	for _, img := range images {
+		imgID, err := syncImage(ctx, img, imgStore, db, encryptionKey)
 		if err != nil {
 			continue
 		}
@@ -120,32 +267,30 @@ func syncLocalImagesWithBackblaze(ctx context.Context, paths []string, bucket *b
 	return imgIds
 }
 
-func syncImage(ctx context.Context, imgPath string, bucket *b2.Bucket, db *sqlx.DB, encryptionKey string) (string, error) {
-	imgID, err := calculateHash(bytes.NewReader([]byte(imgPath)))
+func syncImage(ctx context.Context, img *imgFileDto, imgStore fileStore, db datastore, encryptionKey string) (string, error) {
+	imgID, err := calculateHash(bytes.NewReader([]byte(img.Path)))
 	if err != nil {
-		log.Printf("Error calculating path's hash - path: %v - err msg: %v", imgPath, err)
+		log.Printf("Error calculating path's hash - path: %v - err msg: %v", img.Path, err)
 		return "", err
 	}
-	f, err := os.Open(imgPath)
+	f, err := os.Open(img.Path)
 	if err != nil {
-		log.Printf("Error opening file %v - err msg: %v", imgPath, err)
+		log.Printf("Error opening file %v - err msg: %v", img.Path, err)
 		return "", err
 	}
 	defer f.Close()
 	imgContent, err := ioutil.ReadAll(f)
 	if err != nil {
-		log.Printf("Error reading file %v - err msg: %v", imgPath, err)
+		log.Printf("Error reading file %v - err msg: %v", img.Path, err)
 		return "", err
 	}
 	imgContentReader := bytes.NewReader(imgContent)
-	imgCreatedAt, thumbnail, err := readExifMetadata(imgPath, imgContentReader)
+	thumbnail, err := extractThumbnail(img.Path, imgContentReader)
 	if err != nil {
-		log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", imgPath, err)
+		log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", img.Path, err)
 		return "", err
 	}
-	if isImgToOld(imgCreatedAt) {
-		return "", err
-	}
+
 	imgHash, err := calculateHash(imgContentReader)
 	if err != nil {
 		log.Printf("Error calculating img hash: %v", err)
@@ -153,83 +298,46 @@ func syncImage(ctx context.Context, imgPath string, bucket *b2.Bucket, db *sqlx.
 	}
 	encryptedThumbnail, err := encrypt(encryptionKey, thumbnail)
 	if err != nil {
-		log.Printf("Error encrypting thumbnail: %v - err msg: %v", imgPath, err)
+		log.Printf("Error encrypting thumbnail: %v - err msg: %v", img.Path, err)
 		return "", err
 	}
 	log.Printf("Thumbnail size: %v", len(encryptedThumbnail))
 	encryptedImg, err := encrypt(encryptionKey, imgContent)
 	if err != nil {
-		log.Printf("Error encrypting image: %v - err msg: %v", imgPath, err)
-		return "", err
-	}
-	log.Printf("Image size: %v", len(encryptedImg))
-
-	var existingImgs = []image{}
-	if err := db.Select(&existingImgs, "SELECT img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name FROM img WHERE img_id=$1 LIMIT 1;", imgID); err != nil {
-		log.Printf("Error quering existing image %v - err: %v", imgID, err)
+		log.Printf("Error encrypting image: %v - err msg: %v", img.Path, err)
 		return "", err
 	}
 
-	imgExists := len(existingImgs) > 0
-	existingImgChanged := imgExists && existingImgs[0].ImgHash != imgHash
-	if imgExists && !existingImgChanged {
-		log.Print("Existing image unchanged - do nothing and process next img")
-		return imgID, nil
-	} else if existingImgChanged {
-		log.Print("Existing image changed.")
-		_, err := db.Exec("DELETE FROM img WHERE img_id=$1", imgID)
-		if err != nil {
-			log.Printf("Image with the ID = %v could not be deleted - err: %v", imgID, err)
-			return "", err
+	if err := db.updateExisting(imgID, imgHash); err != nil {
+		return "", err
+	}
+
+	b2thumbnailName := generateUniqueFileName("thumb", img.Path, img.CreatedAt)
+	b2imgName := generateUniqueFileName("orig", img.Path, img.CreatedAt)
+	err = db.executeInsideTran(func(tx *sqlx.Tx) error {
+		imgEntity := &image{imgID, img.CreatedAt, imgHash, b2imgName, b2thumbnailName}
+		if err := db.insertImg(tx, imgEntity); err != nil {
+			log.Printf("Error inserting into DB: %v", err)
+			return err
 		}
-	}
+		log.Printf("Starting upload to b2 - img %v", img.Path)
 
-	b2thumbnailName := generateUniqueFileName("thumb", imgPath, imgCreatedAt)
-	b2imgName := generateUniqueFileName("orig", imgPath, imgCreatedAt)
-
-	tx := db.MustBegin()
-
-	img := &image{imgID, imgCreatedAt, imgHash, b2imgName, b2thumbnailName}
-	if _, err := tx.NamedExec("INSERT INTO img (img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name) VALUES (:img_id, :created_at, :img_hash, :b2_img_name, :b2_thumbnail_name)", img); err != nil {
-		log.Printf("Error inserting into DB: %v", err)
-		return "", err
-	}
-	log.Printf("Starting upload to b2 - img %v", imgPath)
-
-	if err := uploadToB2(ctx, bucket, b2thumbnailName, encryptedThumbnail); err != nil {
-		log.Printf("Error uploading to b2: %v - img: %v", err, imgPath)
-		return "", err
-	}
-	if err := uploadToB2(ctx, bucket, b2imgName, encryptedImg); err != nil {
-		log.Printf("Error uploading to b2: %v - img: %v", err, imgPath)
-		return "", err
-	}
-	log.Printf("Upload compleated for img %v", imgPath)
-	err = tx.Commit()
+		if err := imgStore.uploadToB2(b2thumbnailName, encryptedThumbnail); err != nil {
+			log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
+			return err
+		}
+		if err := imgStore.uploadToB2(b2imgName, encryptedImg); err != nil {
+			log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
+			return err
+		}
+		log.Printf("Upload compleated for img %v", img.Path)
+		return nil
+	})
 	if err != nil {
-		log.Printf("Error commiting to the db: %v", err)
 		return "", err
 	}
 
 	return imgID, nil
-}
-
-func uploadToB2(ctx context.Context, bucket *b2.Bucket, imgFileName string, payload []byte) error {
-	b2Writer := createB2Writer(ctx, bucket, imgFileName)
-	reader := bytes.NewReader(payload)
-	if _, err := io.Copy(b2Writer, reader); err != nil {
-		return err
-	}
-	if err := b2Writer.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func createB2Writer(ctx context.Context, bucket *b2.Bucket, imgFileName string) *b2.Writer {
-	imgObj := bucket.Object(imgFileName)
-	b2Writer := imgObj.NewWriter(ctx)
-	return b2Writer
 }
 
 func generateUniqueFileName(prefix string, imgPath string, imgCreatedAt time.Time) string {
@@ -238,30 +346,36 @@ func generateUniqueFileName(prefix string, imgPath string, imgCreatedAt time.Tim
 	return imgFileName
 }
 
-func isImgToOld(createdAt time.Time) bool {
-	return createdAt.Year() < time.Now().Add(-1*time.Hour*24*365*10).Year()
-}
-
-func readExifMetadata(imgPath string, r io.ReadSeeker) (time.Time, []byte, error) {
+func extractCreatedAt(imgPath string, r *os.File) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
-		return time.Time{}, nil, err
+		return time.Time{}, err
 	}
+	defer r.Close()
 	imgCreatedAt, err := x.DateTime()
 	if err != nil {
 		imgCreatedAt, err = findNeighborImgCreatedAt(imgPath)
 		if err != nil {
-			return time.Time{}, nil, err
+			return time.Time{}, err
 		}
 	}
+	return imgCreatedAt, nil
+}
+
+func extractThumbnail(imgPath string, r io.ReadSeeker) ([]byte, error) {
+	x, err := exif.Decode(r)
+	if err != nil {
+		return nil, err
+	}
+
 	thumbnail, err := x.JpegThumbnail()
 	if err != nil {
 		thumbnail, err = resizeImg(r)
 		if err != nil {
-			return time.Time{}, nil, err
+			return nil, err
 		}
 	}
-	return imgCreatedAt, thumbnail, nil
+	return thumbnail, nil
 }
 
 func resizeImg(r io.ReadSeeker) ([]byte, error) {
