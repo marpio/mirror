@@ -15,10 +15,9 @@ type Image struct {
 	B2ThumbnailName string    `db:"b2_thumbnail_name"`
 }
 
-type FileStoreAction func() error
 type Datastore interface {
 	GetByID(imgID string) ([]Image, error)
-	Insert(imgEntity *Image, actionFn FileStoreAction) error
+	Insert(imgEntity *Image) error
 	Update(imgID string, imgContentHash string) error
 }
 
@@ -41,22 +40,12 @@ func (datastore *db) GetByID(imgID string) ([]Image, error) {
 	return existingImgs, nil
 }
 
-func (datastore *db) Insert(imgEntity *Image, actionFn FileStoreAction) error {
-	tx := datastore.db.MustBegin()
-	if _, err := tx.NamedExec("INSERT INTO img (img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name) VALUES (:img_id, :created_at, :img_hash, :b2_img_name, :b2_thumbnail_name)", imgEntity); err != nil {
+func (datastore *db) Insert(imgEntity *Image) error {
+	if _, err := datastore.db.NamedExec("INSERT INTO img (img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name) VALUES (:img_id, :created_at, :img_hash, :b2_img_name, :b2_thumbnail_name)", imgEntity); err != nil {
 		log.Printf("Error inserting into DB: %v", err)
 		return err
 	}
-
-	if err := actionFn(); err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
 	return nil
-
 }
 
 func (datastore *db) Update(imgID string, imgContentHash string) error {

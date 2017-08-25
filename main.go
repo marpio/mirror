@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -50,17 +51,14 @@ func main() {
 		b2_img_name text NOT NULL,
 		b2_thumbnail_name text NOT NULL);`)
 
-	imgRootDir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
+	dir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
 	flag.Parse()
 
-	if *imgRootDir != "" {
-		imgs := getImages(*imgRootDir)
+	if *dir != "" {
+		imgs := getImages(*dir)
 		log.Printf("Found %v images.", len(imgs))
-		localState := syncLocalImagesWithBackblaze(ctx, imgs, imgStore, metadataStore, encryptionKey)
+		syncLocalImagesWithBackblaze(ctx, imgs, imgStore, metadataStore, encryptionKey)
 		log.Println("Sync compleated.")
-		for _, imgID := range localState {
-			log.Printf("ImgID: %v", imgID)
-		}
 	}
 }
 
@@ -111,86 +109,95 @@ func getImages(rootPath string) []*imgFileDto {
 	return imgFiles
 }
 
-func syncLocalImagesWithBackblaze(ctx context.Context, images []*imgFileDto, imgStore filestore.FileStore, metadataStore metadatastore.Datastore, encryptionKey string) []string {
-	imgIds := make([]string, 0)
-
-	for _, img := range images {
-		imgID, err := syncImage(ctx, img, imgStore, metadataStore, encryptionKey)
-		if err != nil {
-			continue
+func syncLocalImagesWithBackblaze(ctx context.Context, images []*imgFileDto, fileStore filestore.FileStore, metadataStore metadatastore.Datastore, encryptionKey string) {
+	chunkLen := 10
+	length := len(images)
+	for i := 0; i < length; i = i + chunkLen {
+		end := i + chunkLen
+		if end >= length {
+			end = length - 1
 		}
-		imgIds = append(imgIds, imgID)
+		var wg sync.WaitGroup
+		for _, img := range images[i:end] {
+			wg.Add(1)
+			go func(image *imgFileDto) {
+				defer wg.Done()
+				err := syncImage(ctx, image, fileStore, metadataStore, encryptionKey)
+				if err != nil {
+					log.Printf("Error syncing image: %v", image.Path)
+				}
+			}(img)
+		}
+		wg.Wait()
 	}
-	return imgIds
 }
 
-func syncImage(ctx context.Context, img *imgFileDto, imgStore filestore.FileStore, metadataStore metadatastore.Datastore, encryptionKey string) (string, error) {
+func syncImage(ctx context.Context, img *imgFileDto, fileStore filestore.FileStore, metadataStore metadatastore.Datastore, encryptionKey string) error {
 	imgID, err := crypto.CalculateHash(bytes.NewReader([]byte(img.Path)))
 	if err != nil {
 		log.Printf("Error calculating path's hash - path: %v - err msg: %v", img.Path, err)
-		return "", err
+		return err
 	}
 	f, err := os.Open(img.Path)
 	if err != nil {
 		log.Printf("Error opening file %v - err msg: %v", img.Path, err)
-		return "", err
+		return err
 	}
 	defer f.Close()
 	imgContent, err := ioutil.ReadAll(f)
 	if err != nil {
 		log.Printf("Error reading file %v - err msg: %v", img.Path, err)
-		return "", err
+		return err
 	}
 	imgContentReader := bytes.NewReader(imgContent)
 	thumbnail, err := metadata.ExtractThumbnail(img.Path, imgContentReader)
 	if err != nil {
 		log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", img.Path, err)
-		return "", err
+		return err
 	}
 
 	imgHash, err := crypto.CalculateHash(imgContentReader)
 	if err != nil {
 		log.Printf("Error calculating img hash: %v", err)
-		return "", err
+		return err
 	}
 	encryptedThumbnail, err := crypto.Encrypt(encryptionKey, thumbnail)
 	if err != nil {
 		log.Printf("Error encrypting thumbnail: %v - err msg: %v", img.Path, err)
-		return "", err
+		return err
 	}
-	log.Printf("Thumbnail size: %v", len(encryptedThumbnail))
 	encryptedImg, err := crypto.Encrypt(encryptionKey, imgContent)
 	if err != nil {
 		log.Printf("Error encrypting image: %v - err msg: %v", img.Path, err)
-		return "", err
+		return err
 	}
 
 	if err := metadataStore.Update(imgID, imgHash); err != nil {
-		return "", err
+		return err
 	}
 
 	b2thumbnailName := generateUniqueFileName("thumb", img.Path, img.CreatedAt)
 	b2imgName := generateUniqueFileName("orig", img.Path, img.CreatedAt)
-	imgEntity := &metadatastore.Image{ImgID: imgID, CreatedAt: img.CreatedAt, ImgHash: imgHash, B2ImgName: b2imgName, B2ThumbnailName: b2thumbnailName}
-	err = metadataStore.Insert(imgEntity, func() error {
-		log.Printf("Starting upload to b2 - img %v", img.Path)
 
-		if err := imgStore.Upload(b2thumbnailName, encryptedThumbnail); err != nil {
-			log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
-			return err
-		}
-		if err := imgStore.Upload(b2imgName, encryptedImg); err != nil {
-			log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
-			return err
-		}
-		log.Printf("Upload compleated for img %v", img.Path)
-		return nil
-	})
+	log.Printf("Starting upload to b2 - img %v", img.Path)
+
+	if err := fileStore.Upload(b2thumbnailName, encryptedThumbnail); err != nil {
+		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
+		return err
+	}
+	if err := fileStore.Upload(b2imgName, encryptedImg); err != nil {
+		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
+		return err
+	}
+	log.Printf("Upload compleated for img %v", img.Path)
+
+	imgEntity := &metadatastore.Image{ImgID: imgID, CreatedAt: img.CreatedAt, ImgHash: imgHash, B2ImgName: b2imgName, B2ThumbnailName: b2thumbnailName}
+	err = metadataStore.Insert(imgEntity)
 	if err != nil {
-		return "", err
+		return err
 	}
 
-	return imgID, nil
+	return nil
 }
 
 func generateUniqueFileName(prefix string, imgPath string, imgCreatedAt time.Time) string {
