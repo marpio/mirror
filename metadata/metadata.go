@@ -55,7 +55,7 @@ func resizeImg(r io.ReadSeeker) ([]byte, error) {
 	m := resize.Thumbnail(200, 200, img, resize.NearestNeighbor)
 	var b bytes.Buffer
 	writer := bufio.NewWriter(&b)
-	if err := jpeg.Encode(writer, m, nil); err != nil {
+	if err := jpeg.Encode(writer, m, &jpeg.Options{Quality: 50}); err != nil {
 		return nil, err
 	}
 	if err := writer.Flush(); err != nil {

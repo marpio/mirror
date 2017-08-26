@@ -21,17 +21,24 @@ type Datastore interface {
 	Update(imgID string, imgContentHash string) error
 }
 
-type db struct {
+type SqliteMetadataStore struct {
 	db *sqlx.DB
 }
 
-func NewMetadataStore(dbName string, initScript string) Datastore {
+func NewSqliteMetadataStore(dbName string) Datastore {
 	dbInstance := sqlx.MustConnect("sqlite3", dbName)
+	initScript := `
+	CREATE TABLE IF NOT EXISTS img (
+		img_id text PRIMARY KEY,
+		created_at DATETIME,
+		img_hash text NOT NULL,
+		b2_img_name text NOT NULL,
+		b2_thumbnail_name text NOT NULL);`
 	dbInstance.MustExec(initScript)
-	return &db{db: dbInstance}
+	return &SqliteMetadataStore{db: dbInstance}
 }
 
-func (datastore *db) GetByID(imgID string) ([]Image, error) {
+func (datastore *SqliteMetadataStore) GetByID(imgID string) ([]Image, error) {
 	var existingImgs = []Image{}
 	if err := datastore.db.Select(&existingImgs, "SELECT img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name FROM img WHERE img_id=$1 LIMIT 1;", imgID); err != nil {
 		log.Printf("Error quering existing image %v - err: %v", imgID, err)
@@ -40,7 +47,7 @@ func (datastore *db) GetByID(imgID string) ([]Image, error) {
 	return existingImgs, nil
 }
 
-func (datastore *db) Insert(imgEntity *Image) error {
+func (datastore *SqliteMetadataStore) Insert(imgEntity *Image) error {
 	if _, err := datastore.db.NamedExec("INSERT INTO img (img_id, created_at, img_hash, b2_img_name, b2_thumbnail_name) VALUES (:img_id, :created_at, :img_hash, :b2_img_name, :b2_thumbnail_name)", imgEntity); err != nil {
 		log.Printf("Error inserting into DB: %v", err)
 		return err
@@ -48,7 +55,7 @@ func (datastore *db) Insert(imgEntity *Image) error {
 	return nil
 }
 
-func (datastore *db) Update(imgID string, imgContentHash string) error {
+func (datastore *SqliteMetadataStore) Update(imgID string, imgContentHash string) error {
 	existingImgs, err := datastore.GetByID(imgID)
 	if err != nil {
 		log.Printf("Error quering existing image %v - err: %v", imgID, err)

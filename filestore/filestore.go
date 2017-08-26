@@ -14,13 +14,13 @@ type FileStore interface {
 	//download(encryptionKey, src, dst string)
 }
 
-type b2Store struct {
+type B2Store struct {
 	bucket *b2.Bucket
 	ctx    context.Context
 }
 
 // NewFilesStore creates new FilesStore instance
-func NewFileStore(ctx context.Context, b2id string, b2key string, bucketName string) FileStore {
+func NewB2Store(ctx context.Context, b2id string, b2key string, bucketName string) FileStore {
 	b2Client, err := b2.NewClient(ctx, b2id, b2key)
 	if err != nil {
 		log.Fatal(err)
@@ -30,7 +30,7 @@ func NewFileStore(ctx context.Context, b2id string, b2key string, bucketName str
 	if err != nil {
 		log.Fatal(err)
 	}
-	return &b2Store{bucket: bucket, ctx: ctx}
+	return &B2Store{bucket: bucket, ctx: ctx}
 }
 
 //func (b2 *b2Store) download(encryptionKey, src, dst string) {
@@ -55,7 +55,7 @@ func NewFileStore(ctx context.Context, b2id string, b2key string, bucketName str
 //	}
 //}
 
-func (b2 *b2Store) Upload(imgFileName string, payload []byte) error {
+func (b2 *B2Store) Upload(imgFileName string, payload []byte) error {
 	imgObj := b2.bucket.Object(imgFileName)
 	b2Writer := imgObj.NewWriter(b2.ctx)
 	reader := bytes.NewReader(payload)
