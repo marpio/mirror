@@ -20,6 +20,7 @@ import (
 )
 
 type imgFileDto struct {
+	ImgID     string
 	Path      string
 	CreatedAt time.Time
 }
@@ -37,7 +38,7 @@ func NewSyncronizer(ctx context.Context, fileStore filestore.FileStore, metadata
 func (s *Syncronizer) Sync(rootPath string, encryptionKey string) {
 	imgs := getImages(rootPath)
 	log.Printf("Found %v images.", len(imgs))
-	syncLocalImagesWithBackblaze(s.ctx, imgs, s.fileStore, s.metadataStore, encryptionKey)
+	syncImages(s.ctx, imgs, s.fileStore, s.metadataStore, encryptionKey)
 	log.Println("Sync compleated.")
 }
 
@@ -67,7 +68,12 @@ func getImages(rootPath string) []*imgFileDto {
 				return err
 			}
 			if !isImgToOldPredicate(imgCreatedAt) {
-				imgFiles = append(imgFiles, &imgFileDto{Path: path, CreatedAt: imgCreatedAt})
+				imgID, err := crypto.CalculateHash(bytes.NewReader([]byte(path)))
+				if err != nil {
+					log.Printf("Error calculating path's hash - path: %v - err msg: %v", path, err)
+					return err
+				}
+				imgFiles = append(imgFiles, &imgFileDto{ImgID: imgID, Path: path, CreatedAt: imgCreatedAt})
 			}
 		}
 		return nil
@@ -78,7 +84,8 @@ func getImages(rootPath string) []*imgFileDto {
 	return imgFiles
 }
 
-func syncLocalImagesWithBackblaze(ctx context.Context, images []*imgFileDto, fileStore filestore.FileStore, metadataStore metadatastore.Datastore, encryptionKey string) {
+func syncImages(ctx context.Context, images []*imgFileDto, fileStore filestore.FileStore, metadataStore metadatastore.Datastore, encryptionKey string) {
+	existingFileIDs := make(map[string]bool)
 	chunkSize := 10
 	length := len(images)
 	for i := 0; i < length; i = i + chunkSize {
@@ -86,8 +93,10 @@ func syncLocalImagesWithBackblaze(ctx context.Context, images []*imgFileDto, fil
 		if end > length {
 			end = length
 		}
+
 		var wg sync.WaitGroup
 		for _, img := range images[i:end] {
+			existingFileIDs[img.ImgID] = false
 			wg.Add(1)
 			go func(image *imgFileDto) {
 				defer wg.Done()
@@ -99,14 +108,11 @@ func syncLocalImagesWithBackblaze(ctx context.Context, images []*imgFileDto, fil
 		}
 		wg.Wait()
 	}
+	deleteOutOfSyncMetadata(metadataStore, existingFileIDs)
 }
 
 func syncImage(ctx context.Context, img *imgFileDto, fileStore filestore.FileStore, metadataStore metadatastore.Datastore, encryptionKey string) error {
-	imgID, err := crypto.CalculateHash(bytes.NewReader([]byte(img.Path)))
-	if err != nil {
-		log.Printf("Error calculating path's hash - path: %v - err msg: %v", img.Path, err)
-		return err
-	}
+	imgID := img.ImgID
 	f, err := os.Open(img.Path)
 	if err != nil {
 		log.Printf("Error opening file %v - err msg: %v", img.Path, err)
@@ -141,14 +147,12 @@ func syncImage(ctx context.Context, img *imgFileDto, fileStore filestore.FileSto
 		return err
 	}
 
-	if err := metadataStore.Update(imgID, imgHash); err != nil {
+	if err := metadataStore.DeleteIfImgChanged(imgID, imgHash); err != nil {
 		return err
 	}
 
 	b2thumbnailName := generateUniqueFileName("thumb", img.Path, img.CreatedAt)
 	b2imgName := generateUniqueFileName("orig", img.Path, img.CreatedAt)
-
-	log.Printf("Starting upload to b2 - img %v", img.Path)
 
 	if err := fileStore.Upload(b2thumbnailName, encryptedThumbnail); err != nil {
 		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
@@ -158,8 +162,6 @@ func syncImage(ctx context.Context, img *imgFileDto, fileStore filestore.FileSto
 		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
 		return err
 	}
-	log.Printf("Upload compleated for img %v", img.Path)
-
 	imgEntity := &metadatastore.Image{ImgID: imgID, CreatedAt: img.CreatedAt, ImgHash: imgHash, B2ImgName: b2imgName, B2ThumbnailName: b2thumbnailName}
 	err = metadataStore.Insert(imgEntity)
 	if err != nil {
@@ -167,6 +169,18 @@ func syncImage(ctx context.Context, img *imgFileDto, fileStore filestore.FileSto
 	}
 
 	return nil
+}
+
+func deleteOutOfSyncMetadata(metadataStore metadatastore.Datastore, existingFileIDs map[string]bool) {
+	metadata, err := metadataStore.GetAll()
+	if err != nil {
+		log.Printf("Error geting metadata: %v", err.Error())
+	}
+	for _, img := range metadata {
+		if _, exists := existingFileIDs[img.ImgID]; !exists {
+			metadataStore.Delete(img.ImgID)
+		}
+	}
 }
 
 func generateUniqueFileName(prefix string, imgPath string, imgCreatedAt time.Time) string {
