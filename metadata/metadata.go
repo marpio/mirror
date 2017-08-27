@@ -14,6 +14,14 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
+type Image struct {
+	ImgID           string    `db:"img_id"`
+	CreatedAt       time.Time `db:"created_at"`
+	ImgHash         string    `db:"img_hash"`
+	B2ImgName       string    `db:"b2_img_name"`
+	B2ThumbnailName string    `db:"b2_thumbnail_name"`
+}
+
 func ExtractCreatedAt(imgPath string, r *os.File) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {

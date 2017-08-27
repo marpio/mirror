@@ -7,9 +7,12 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"log"
 
 	"golang.org/x/crypto/nacl/secretbox"
 )
+
+const dataChunkSize = 64 * 1024
 
 func CalculateHash(r io.Reader) (string, error) {
 	h := sha1.New()
@@ -30,7 +33,7 @@ func Encrypt(encryptionKey string, data []byte) ([]byte, error) {
 	var secretKey [32]byte
 	copy(secretKey[:], secretKeyBytes)
 
-	chunkSize := 64 * 1024
+	chunkSize := dataChunkSize
 	length := len(data)
 	for i := 0; i < len(data); i = i + chunkSize {
 		end := i + chunkSize
@@ -48,6 +51,12 @@ func Encrypt(encryptionKey string, data []byte) ([]byte, error) {
 	return encrypted, nil
 }
 
+func Test(encryptionKey string) {
+	w := []byte{2, 2, 2, 2}
+	x, _ := Encrypt(encryptionKey, w)
+	y, _ := Decrypt(encryptionKey, x)
+	log.Print((y[:]))
+}
 func Decrypt(encryptionKey string, encryptedData []byte) ([]byte, error) {
 	var decrypted []byte
 	secretKeyBytes, err := hex.DecodeString(encryptionKey)
@@ -58,19 +67,19 @@ func Decrypt(encryptionKey string, encryptedData []byte) ([]byte, error) {
 	var secretKey [32]byte
 	copy(secretKey[:], secretKeyBytes)
 
-	chunkSize := 64*1024 + 24
+	chunkSize := 24 + dataChunkSize + 16
 	length := len(encryptedData)
 	for i := 0; i < len(encryptedData); i = i + chunkSize {
 		end := i + chunkSize
 		if end > length {
 			end = length
 		}
-		encryptedDataChunk := encryptedData[i:chunkSize]
+		encryptedDataChunk := encryptedData[i:end]
 		var decryptNonce [24]byte
 		copy(decryptNonce[:], encryptedDataChunk[:24])
 		decryptedChunk, ok := secretbox.Open(nil, encryptedDataChunk[24:], &decryptNonce, &secretKey)
 		if !ok {
-			return nil, fmt.Errorf("Could not decrypt data")
+			return nil, fmt.Errorf("Could not decrypt data chunk nr: %v", i)
 		}
 		decrypted = append(decrypted, decryptedChunk...)
 

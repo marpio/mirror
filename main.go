@@ -32,12 +32,23 @@ func main() {
 	metadataStore := metadatastore.NewSqliteMetadataStore("img.db")
 
 	dir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
+	downloadsrc := flag.String("download src", "", "File to ....")
+	downloaddest := flag.String("download dest", "", "File to ....")
 	flag.Parse()
 
 	if *dir != "" {
 		syncronizer := syncronizer.NewSyncronizer(ctx, fileStore, metadataStore)
 		syncronizer.Sync(*dir, encryptionKey)
 	}
+	if *downloadsrc != "" && *downloaddest != "" {
+		f, err := os.Create(*downloaddest)
+		defer f.Close()
+		if err != nil {
+			log.Fatal(err)
+		}
+		fileStore.Download(f, encryptionKey, *downloadsrc)
+	}
+
 }
 
 func initLog() io.Closer {
