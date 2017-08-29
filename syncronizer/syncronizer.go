@@ -3,7 +3,7 @@ package syncronizer
 import (
 	"bytes"
 	"context"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
 	"path"
@@ -21,14 +21,14 @@ type Datastore interface {
 	GetAll() ([]*metadata.Image, error)
 	GetByID(imgID string) ([]*metadata.Image, error)
 	Insert(imgEntity *metadata.Image) error
-	DeleteIfImgChanged(imgID string, imgContentHash string) error
 	Delete(imgID string) error
-	Exists(imgID string) (*metadata.Image, error)
 }
 
 type FileStore interface {
 	Upload(imgFileName string, payload []byte) error
-	//download(encryptionKey, src, dst string)
+	UploadStream(imgFileName string, reader io.Reader) error
+	Download(dst io.Writer, encryptionKey, src string)
+	Delete(fileName string) error
 }
 
 type imgFileDto struct {
@@ -112,7 +112,7 @@ func syncImages(ctx context.Context, images []*imgFileDto, fileStore FileStore, 
 			wg.Add(1)
 			go func(image *imgFileDto) {
 				defer wg.Done()
-				err := syncImage(ctx, image, fileStore, metadataStore, encryptionKey)
+				err := syncImageStreamed(ctx, image, fileStore, metadataStore, encryptionKey)
 				if err != nil {
 					log.Printf("Error syncing image: %v", image.Path)
 				}
@@ -120,10 +120,10 @@ func syncImages(ctx context.Context, images []*imgFileDto, fileStore FileStore, 
 		}
 		wg.Wait()
 	}
-	deleteOutOfSyncMetadata(metadataStore, existingFileIDs)
+	deleteOutOfSyncMetadata(metadataStore, fileStore, existingFileIDs)
 }
 
-func syncImage(ctx context.Context, img *imgFileDto, fileStore FileStore, metadataStore Datastore, encryptionKey string) error {
+func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore FileStore, metadataStore Datastore, encryptionKey string) error {
 	imgID := img.ImgID
 	f, err := os.Open(img.Path)
 	if err != nil {
@@ -131,50 +131,65 @@ func syncImage(ctx context.Context, img *imgFileDto, fileStore FileStore, metada
 		return err
 	}
 	defer f.Close()
-	imgContent, err := ioutil.ReadAll(f)
-	if err != nil {
-		log.Printf("Error reading file %v - err msg: %v", img.Path, err)
-		return err
-	}
-	imgContentReader := bytes.NewReader(imgContent)
-	thumbnail, err := metadata.ExtractThumbnail(img.Path, imgContentReader)
-	if err != nil {
-		log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", img.Path, err)
-		return err
-	}
-
-	imgHash, err := crypto.CalculateHash(imgContentReader)
+	imgHash, err := crypto.CalculateHash(f)
 	if err != nil {
 		log.Printf("Error calculating img hash: %v", err)
 		return err
 	}
-	encryptedThumbnail, err := crypto.Encrypt(encryptionKey, thumbnail)
+	f.Seek(0, 0)
+	imgMetadata, err := metadataStore.GetByID(imgID)
 	if err != nil {
-		log.Printf("Error encrypting thumbnail: %v - err msg: %v", img.Path, err)
 		return err
 	}
-	encryptedImg, err := crypto.Encrypt(encryptionKey, imgContent)
+	imgMetadataExist := len(imgMetadata) > 0
+	if imgMetadataExist && imgMetadata[0].ImgHash == imgHash {
+		return nil
+	}
 	if err != nil {
-		log.Printf("Error encrypting image: %v - err msg: %v", img.Path, err)
+		log.Printf("Error reading file %v - err msg: %v", img.Path, err)
 		return err
 	}
-
-	if err := metadataStore.DeleteIfImgChanged(imgID, imgHash); err != nil {
+	thumbnail, err := metadata.ExtractThumbnail(img.Path, f)
+	if err != nil {
+		log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", img.Path, err)
 		return err
 	}
-
+	f.Seek(0, 0)
 	b2thumbnailName := generateUniqueFileName("thumb", img.Path, img.CreatedAt)
 	b2imgName := generateUniqueFileName("orig", img.Path, img.CreatedAt)
 
-	if err := fileStore.Upload(b2thumbnailName, encryptedThumbnail); err != nil {
+	encryptedThumbnailReader, thumbPipeWriter := io.Pipe()
+	go func() {
+		// close the writer, so the reader knows there's no more data
+		defer thumbPipeWriter.Close()
+		err = crypto.EncryptStream(thumbPipeWriter, encryptionKey, bytes.NewReader(thumbnail))
+		if err != nil {
+			log.Printf("Error encrypting thumbnail: %v - err msg: %v", img.Path, err)
+		}
+	}()
+	if err := fileStore.UploadStream(b2thumbnailName, encryptedThumbnailReader); err != nil {
 		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
 		return err
 	}
-	if err := fileStore.Upload(b2imgName, encryptedImg); err != nil {
+	encryptedImgReader, imgPipeWriter := io.Pipe()
+	go func() {
+		// close the writer, so the reader knows there's no more data
+		defer imgPipeWriter.Close()
+		err = crypto.EncryptStream(imgPipeWriter, encryptionKey, f)
+		if err != nil {
+			log.Printf("Error encrypting image: %v - err msg: %v", img.Path, err)
+		}
+	}()
+	if err := fileStore.UploadStream(b2imgName, encryptedImgReader); err != nil {
 		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
 		return err
 	}
-	imgEntity := &metadata.Image{ImgID: imgID, CreatedAt: img.CreatedAt, ImgHash: imgHash, B2ImgName: b2imgName, B2ThumbnailName: b2thumbnailName}
+	if imgMetadataExist && imgMetadata[0].ImgHash != imgHash {
+		if err := metadataStore.Delete(imgID); err != nil {
+			return err
+		}
+	}
+	imgEntity := &metadata.Image{ImgID: imgID, CreatedAt: img.CreatedAt, ImgHash: imgHash, ImgName: b2imgName, ThumbnailName: b2thumbnailName}
 	err = metadataStore.Insert(imgEntity)
 	if err != nil {
 		return err
@@ -183,7 +198,7 @@ func syncImage(ctx context.Context, img *imgFileDto, fileStore FileStore, metada
 	return nil
 }
 
-func deleteOutOfSyncMetadata(metadataStore Datastore, existingFileIDs map[string]bool) {
+func deleteOutOfSyncMetadata(metadataStore Datastore, fileStore FileStore, existingFileIDs map[string]bool) {
 	metadata, err := metadataStore.GetAll()
 	if err != nil {
 		log.Printf("Error geting metadata: %v", err.Error())
@@ -191,6 +206,8 @@ func deleteOutOfSyncMetadata(metadataStore Datastore, existingFileIDs map[string
 	for _, img := range metadata {
 		if _, exists := existingFileIDs[img.ImgID]; !exists {
 			metadataStore.Delete(img.ImgID)
+			fileStore.Delete(img.ImgName)
+			fileStore.Delete(img.ThumbnailName)
 		}
 	}
 }

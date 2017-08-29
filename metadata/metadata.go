@@ -15,11 +15,11 @@ import (
 )
 
 type Image struct {
-	ImgID           string    `db:"img_id"`
-	CreatedAt       time.Time `db:"created_at"`
-	ImgHash         string    `db:"img_hash"`
-	B2ImgName       string    `db:"b2_img_name"`
-	B2ThumbnailName string    `db:"b2_thumbnail_name"`
+	ImgID         string    `db:"img_id"`
+	CreatedAt     time.Time `db:"created_at"`
+	ImgHash       string    `db:"img_hash"`
+	ImgName       string    `db:"img_name"`
+	ThumbnailName string    `db:"thumbnail_name"`
 }
 
 func ExtractCreatedAt(imgPath string, r *os.File) (time.Time, error) {

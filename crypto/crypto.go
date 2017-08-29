@@ -23,68 +23,76 @@ func CalculateHash(r io.Reader) (string, error) {
 	return hash, nil
 }
 
-func Encrypt(encryptionKey string, data []byte) ([]byte, error) {
-	var encrypted []byte
+func EncryptStream(dst io.Writer, encryptionKey string, dataReader io.Reader) error {
 	secretKeyBytes, err := hex.DecodeString(encryptionKey)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
 	var secretKey [32]byte
 	copy(secretKey[:], secretKeyBytes)
-
 	chunkSize := dataChunkSize
-	length := len(data)
-	for i := 0; i < len(data); i = i + chunkSize {
-		end := i + chunkSize
-		if end > length {
-			end = length
+	buf := make([]byte, 0, chunkSize)
+	for {
+		n, err := dataReader.Read(buf[:cap(buf)])
+		buf = buf[:n]
+		if n == 0 {
+			if err == nil {
+				continue
+			}
+			if err == io.EOF {
+				break
+			}
+			log.Fatal(err)
+		}
+		if err != nil && err != io.EOF {
+			return err
 		}
 		nonce, err := genNonce()
 		if err != nil {
-			return nil, err
+			return err
 		}
-		encryptedChunk := secretbox.Seal(nonce[:], data[i:end], &nonce, &secretKey)
-		encrypted = append(encrypted, encryptedChunk...)
-
+		encryptedChunk := secretbox.Seal(nonce[:], buf[:], &nonce, &secretKey)
+		dst.Write(encryptedChunk)
 	}
-	return encrypted, nil
+	return nil
 }
 
-func Test(encryptionKey string) {
-	w := []byte{2, 2, 2, 2}
-	x, _ := Encrypt(encryptionKey, w)
-	y, _ := Decrypt(encryptionKey, x)
-	log.Print((y[:]))
-}
-func Decrypt(encryptionKey string, encryptedData []byte) ([]byte, error) {
-	var decrypted []byte
+func DecryptStream(dst io.Writer, encryptionKey string, encryptedDataReader io.Reader) error {
 	secretKeyBytes, err := hex.DecodeString(encryptionKey)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	var secretKey [32]byte
 	copy(secretKey[:], secretKeyBytes)
 
 	chunkSize := 24 + dataChunkSize + 16
-	length := len(encryptedData)
-	for i := 0; i < len(encryptedData); i = i + chunkSize {
-		end := i + chunkSize
-		if end > length {
-			end = length
+	buf := make([]byte, 0, chunkSize)
+	for {
+		n, err := encryptedDataReader.Read(buf[:cap(buf)])
+		buf = buf[:n]
+		if n == 0 {
+			if err == nil {
+				continue
+			}
+			if err == io.EOF {
+				break
+			}
+			log.Fatal(err)
 		}
-		encryptedDataChunk := encryptedData[i:end]
-		var decryptNonce [24]byte
-		copy(decryptNonce[:], encryptedDataChunk[:24])
-		decryptedChunk, ok := secretbox.Open(nil, encryptedDataChunk[24:], &decryptNonce, &secretKey)
-		if !ok {
-			return nil, fmt.Errorf("Could not decrypt data chunk nr: %v", i)
+		if err != nil && err != io.EOF {
+			return err
 		}
-		decrypted = append(decrypted, decryptedChunk...)
 
+		var decryptNonce [24]byte
+		copy(decryptNonce[:], buf[:24])
+		decryptedChunk, ok := secretbox.Open(nil, buf[24:], &decryptNonce, &secretKey)
+		if !ok {
+			return fmt.Errorf("Could not decrypt data")
+		}
+		dst.Write(decryptedChunk)
 	}
-	return decrypted, nil
+	return nil
 }
 
 func genNonce() ([24]byte, error) {

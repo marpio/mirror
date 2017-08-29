@@ -32,8 +32,8 @@ func main() {
 	metadataStore := metadatastore.NewSqliteMetadataStore("img.db")
 
 	dir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
-	downloadsrc := flag.String("download src", "", "File to ....")
-	downloaddest := flag.String("download dest", "", "File to ....")
+	downloadsrc := flag.String("src", "", "File to ....")
+	downloaddest := flag.String("dest", "", "File to ....")
 	flag.Parse()
 
 	if *dir != "" {
