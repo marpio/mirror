@@ -23,7 +23,7 @@ func CalculateHash(r io.Reader) (string, error) {
 	return hash, nil
 }
 
-func EncryptStream(dst io.Writer, encryptionKey string, dataReader io.Reader) error {
+func Encrypt(dst io.Writer, encryptionKey string, dataReader io.Reader) error {
 	secretKeyBytes, err := hex.DecodeString(encryptionKey)
 	if err != nil {
 		return err
@@ -57,7 +57,7 @@ func EncryptStream(dst io.Writer, encryptionKey string, dataReader io.Reader) er
 	return nil
 }
 
-func DecryptStream(dst io.Writer, encryptionKey string, encryptedDataReader io.Reader) error {
+func Decrypt(dst io.Writer, encryptionKey string, encryptedDataReader io.Reader) error {
 	secretKeyBytes, err := hex.DecodeString(encryptionKey)
 	if err != nil {
 		return err

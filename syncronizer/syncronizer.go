@@ -14,22 +14,10 @@ import (
 	"time"
 
 	"github.com/marpio/img-store/crypto"
+	"github.com/marpio/img-store/filestore"
 	"github.com/marpio/img-store/metadata"
+	"github.com/marpio/img-store/metadatastore"
 )
-
-type Datastore interface {
-	GetAll() ([]*metadata.Image, error)
-	GetByID(imgID string) ([]*metadata.Image, error)
-	Insert(imgEntity *metadata.Image) error
-	Delete(imgID string) error
-}
-
-type FileStore interface {
-	Upload(imgFileName string, payload []byte) error
-	UploadStream(imgFileName string, reader io.Reader) error
-	Download(dst io.Writer, encryptionKey, src string)
-	Delete(fileName string) error
-}
 
 type imgFileDto struct {
 	ImgID     string
@@ -39,11 +27,11 @@ type imgFileDto struct {
 
 type Syncronizer struct {
 	ctx           context.Context
-	fileStore     FileStore
-	metadataStore Datastore
+	fileStore     filestore.FileStore
+	metadataStore metadatastore.DataStore
 }
 
-func NewSyncronizer(ctx context.Context, fileStore FileStore, metadataStore Datastore) *Syncronizer {
+func NewSyncronizer(ctx context.Context, fileStore filestore.FileStore, metadataStore metadatastore.DataStore) *Syncronizer {
 	return &Syncronizer{ctx: ctx, fileStore: fileStore, metadataStore: metadataStore}
 }
 
@@ -96,7 +84,7 @@ func getImages(rootPath string) []*imgFileDto {
 	return imgFiles
 }
 
-func syncImages(ctx context.Context, images []*imgFileDto, fileStore FileStore, metadataStore Datastore, encryptionKey string) {
+func syncImages(ctx context.Context, images []*imgFileDto, fileStore filestore.FileStore, metadataStore metadatastore.DataStore, encryptionKey string) {
 	existingFileIDs := make(map[string]bool)
 	chunkSize := 10
 	length := len(images)
@@ -123,7 +111,7 @@ func syncImages(ctx context.Context, images []*imgFileDto, fileStore FileStore, 
 	deleteOutOfSyncMetadata(metadataStore, fileStore, existingFileIDs)
 }
 
-func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore FileStore, metadataStore Datastore, encryptionKey string) error {
+func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore filestore.FileStore, metadataStore metadatastore.DataStore, encryptionKey string) error {
 	imgID := img.ImgID
 	f, err := os.Open(img.Path)
 	if err != nil {
@@ -162,12 +150,12 @@ func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore FileStore
 	go func() {
 		// close the writer, so the reader knows there's no more data
 		defer thumbPipeWriter.Close()
-		err = crypto.EncryptStream(thumbPipeWriter, encryptionKey, bytes.NewReader(thumbnail))
+		err = crypto.Encrypt(thumbPipeWriter, encryptionKey, bytes.NewReader(thumbnail))
 		if err != nil {
 			log.Printf("Error encrypting thumbnail: %v - err msg: %v", img.Path, err)
 		}
 	}()
-	if err := fileStore.UploadStream(b2thumbnailName, encryptedThumbnailReader); err != nil {
+	if err := fileStore.Upload(b2thumbnailName, encryptedThumbnailReader); err != nil {
 		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
 		return err
 	}
@@ -175,12 +163,12 @@ func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore FileStore
 	go func() {
 		// close the writer, so the reader knows there's no more data
 		defer imgPipeWriter.Close()
-		err = crypto.EncryptStream(imgPipeWriter, encryptionKey, f)
+		err = crypto.Encrypt(imgPipeWriter, encryptionKey, f)
 		if err != nil {
 			log.Printf("Error encrypting image: %v - err msg: %v", img.Path, err)
 		}
 	}()
-	if err := fileStore.UploadStream(b2imgName, encryptedImgReader); err != nil {
+	if err := fileStore.Upload(b2imgName, encryptedImgReader); err != nil {
 		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
 		return err
 	}
@@ -189,7 +177,8 @@ func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore FileStore
 			return err
 		}
 	}
-	imgEntity := &metadata.Image{ImgID: imgID, CreatedAt: img.CreatedAt, ImgHash: imgHash, ImgName: b2imgName, ThumbnailName: b2thumbnailName}
+	createdAtMonth := time.Date(img.CreatedAt.Year(), img.CreatedAt.Month(), 1, 0, 0, 0, 0, img.CreatedAt.Location())
+	imgEntity := &metadatastore.Image{ImgID: imgID, CreatedAt: img.CreatedAt, CreatedAtMonth: createdAtMonth, ImgHash: imgHash, ImgName: b2imgName, ThumbnailName: b2thumbnailName}
 	err = metadataStore.Insert(imgEntity)
 	if err != nil {
 		return err
@@ -198,7 +187,7 @@ func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore FileStore
 	return nil
 }
 
-func deleteOutOfSyncMetadata(metadataStore Datastore, fileStore FileStore, existingFileIDs map[string]bool) {
+func deleteOutOfSyncMetadata(metadataStore metadatastore.DataStore, fileStore filestore.FileStore, existingFileIDs map[string]bool) {
 	metadata, err := metadataStore.GetAll()
 	if err != nil {
 		log.Printf("Error geting metadata: %v", err.Error())

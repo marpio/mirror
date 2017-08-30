@@ -14,14 +14,6 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-type Image struct {
-	ImgID         string    `db:"img_id"`
-	CreatedAt     time.Time `db:"created_at"`
-	ImgHash       string    `db:"img_hash"`
-	ImgName       string    `db:"img_name"`
-	ThumbnailName string    `db:"thumbnail_name"`
-}
-
 func ExtractCreatedAt(imgPath string, r *os.File) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
@@ -101,5 +93,5 @@ func findNeighborImgCreatedAt(imgPath string) (time.Time, error) {
 			return imgCreatedAt, nil
 		}
 	}
-	return time.Time{}, fmt.Errorf("Coldn't extract CreatedAt for file %v", imgPath)
+	return time.Time{}, fmt.Errorf("Couldn't extract CreatedAt for file %v", imgPath)
 }
