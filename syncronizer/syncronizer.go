@@ -19,6 +19,8 @@ import (
 	"github.com/marpio/img-store/metadatastore"
 )
 
+const concurrentFiles = 20
+
 type imgFileDto struct {
 	ImgID     string
 	Path      string
@@ -29,16 +31,17 @@ type Syncronizer struct {
 	ctx           context.Context
 	fileStore     filestore.FileStore
 	metadataStore metadatastore.DataStore
+	encryptionKey string
 }
 
-func NewSyncronizer(ctx context.Context, fileStore filestore.FileStore, metadataStore metadatastore.DataStore) *Syncronizer {
-	return &Syncronizer{ctx: ctx, fileStore: fileStore, metadataStore: metadataStore}
+func NewSyncronizer(ctx context.Context, fileStore filestore.FileStore, metadataStore metadatastore.DataStore, encryptKey string) *Syncronizer {
+	return &Syncronizer{ctx: ctx, fileStore: fileStore, metadataStore: metadataStore, encryptionKey: encryptKey}
 }
 
-func (s *Syncronizer) Sync(rootPath string, encryptionKey string) {
+func (s *Syncronizer) Sync(rootPath string) {
 	imgs := getImages(rootPath)
 	log.Printf("Found %v images.", len(imgs))
-	syncImages(s.ctx, imgs, s.fileStore, s.metadataStore, encryptionKey)
+	syncImages(s.ctx, imgs, s.fileStore, s.metadataStore, s.encryptionKey)
 	log.Println("Sync compleated.")
 }
 
@@ -86,10 +89,9 @@ func getImages(rootPath string) []*imgFileDto {
 
 func syncImages(ctx context.Context, images []*imgFileDto, fileStore filestore.FileStore, metadataStore metadatastore.DataStore, encryptionKey string) {
 	existingFileIDs := make(map[string]bool)
-	chunkSize := 10
 	length := len(images)
-	for i := 0; i < length; i = i + chunkSize {
-		end := i + chunkSize
+	for i := 0; i < length; i = i + concurrentFiles {
+		end := i + concurrentFiles
 		if end > length {
 			end = length
 		}

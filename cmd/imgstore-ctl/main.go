@@ -38,8 +38,8 @@ func main() {
 	flag.Parse()
 
 	if *dir != "" {
-		syncronizer := syncronizer.NewSyncronizer(ctx, fileStore, metadataStore)
-		syncronizer.Sync(*dir, encryptionKey)
+		syncronizer := syncronizer.NewSyncronizer(ctx, fileStore, metadataStore, encryptionKey)
+		syncronizer.Sync(*dir)
 	}
 	if *downloadsrc != "" && *downloaddest != "" {
 		f, err := os.Create(*downloaddest)
