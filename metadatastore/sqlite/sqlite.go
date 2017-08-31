@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"log"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/marpio/img-store/metadatastore"
@@ -56,4 +57,13 @@ func (datastore *SqliteMetadataStore) Delete(imgID string) error {
 		return err
 	}
 	return nil
+}
+
+func (datastore *SqliteMetadataStore) GetMonths() ([]*time.Time, error) {
+	var res = []*time.Time{}
+	if err := datastore.db.Select(&res, "SELECT DISTINCT created_at_month FROM img;"); err != nil {
+		log.Printf("Error getting created_at_month values - err: %v", err)
+		return nil, err
+	}
+	return res, nil
 }

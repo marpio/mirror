@@ -3,7 +3,6 @@ package syncronizer
 import (
 	"bytes"
 	"context"
-	"io"
 	"log"
 	"os"
 	"path"
@@ -148,29 +147,12 @@ func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore filestore
 	b2thumbnailName := generateUniqueFileName("thumb", img.Path, img.CreatedAt)
 	b2imgName := generateUniqueFileName("orig", img.Path, img.CreatedAt)
 
-	encryptedThumbnailReader, thumbPipeWriter := io.Pipe()
-	go func() {
-		// close the writer, so the reader knows there's no more data
-		defer thumbPipeWriter.Close()
-		err = crypto.Encrypt(thumbPipeWriter, encryptionKey, bytes.NewReader(thumbnail))
-		if err != nil {
-			log.Printf("Error encrypting thumbnail: %v - err msg: %v", img.Path, err)
-		}
-	}()
-	if err := fileStore.Upload(b2thumbnailName, encryptedThumbnailReader); err != nil {
+	if err := fileStore.UploadEncrypted(b2thumbnailName, bytes.NewReader(thumbnail), encryptionKey); err != nil {
 		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
 		return err
 	}
-	encryptedImgReader, imgPipeWriter := io.Pipe()
-	go func() {
-		// close the writer, so the reader knows there's no more data
-		defer imgPipeWriter.Close()
-		err = crypto.Encrypt(imgPipeWriter, encryptionKey, f)
-		if err != nil {
-			log.Printf("Error encrypting image: %v - err msg: %v", img.Path, err)
-		}
-	}()
-	if err := fileStore.Upload(b2imgName, encryptedImgReader); err != nil {
+
+	if err := fileStore.UploadEncrypted(b2imgName, f, encryptionKey); err != nil {
 		log.Printf("Error uploading to b2: %v - img: %v", err, img.Path)
 		return err
 	}

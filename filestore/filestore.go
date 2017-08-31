@@ -10,10 +10,10 @@ type FileStore interface {
 }
 
 type FileStoreReader interface {
-	Download(dst io.Writer, encryptionKey, src string)
+	DownloadDecrypted(dst io.Writer, encryptionKey, fileName string)
 }
 
 type FileStoreWriter interface {
-	Upload(imgFileName string, reader io.Reader) error
+	UploadEncrypted(fileName string, reader io.Reader, encryptionKey string) error
 	Delete(fileName string) error
 }

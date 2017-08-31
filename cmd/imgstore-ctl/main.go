@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path/filepath"
 
 	"github.com/joho/godotenv"
 	"github.com/marpio/img-store/filestore/b2"
@@ -25,12 +26,12 @@ func main() {
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
-	imgDB := os.Getenv("IMG_DB")
+	imgDBPath := os.Getenv("IMG_DB")
 
 	ctx := context.Background()
 
 	fileStore := b2.NewB2Store(ctx, b2id, b2key, bucketName)
-	metadataStore := sqlite.NewSqliteMetadataStore(imgDB)
+	metadataStore := sqlite.NewSqliteMetadataStore(imgDBPath)
 
 	dir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
 	downloadsrc := flag.String("src", "", "File to ....")
@@ -40,6 +41,10 @@ func main() {
 	if *dir != "" {
 		syncronizer := syncronizer.NewSyncronizer(ctx, fileStore, metadataStore, encryptionKey)
 		syncronizer.Sync(*dir)
+
+		if err := uploadMetadataStore(filepath.Base(imgDBPath), fileStore, encryptionKey); err != nil {
+			log.Fatalf("Error uploading File-Store %v", err)
+		}
 	}
 	if *downloadsrc != "" && *downloaddest != "" {
 		f, err := os.Create(*downloaddest)
@@ -47,9 +52,20 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fileStore.Download(f, encryptionKey, *downloadsrc)
+		fileStore.DownloadDecrypted(f, encryptionKey, *downloadsrc)
 	}
 
+}
+
+func uploadMetadataStore(imgDBpath string, fileStore *b2.B2Store, encryptionKey string) error {
+	dbFileReader, err := os.OpenFile(imgDBpath, os.O_RDONLY, 0666)
+	if err != nil {
+		return err
+	}
+	if err := fileStore.UploadEncrypted(imgDBpath, dbFileReader, encryptionKey); err != nil {
+		return err
+	}
+	return nil
 }
 
 func initLog() io.Closer {

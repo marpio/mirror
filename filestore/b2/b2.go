@@ -28,8 +28,8 @@ func NewB2Store(ctx context.Context, b2id string, b2key string, bucketName strin
 	return &B2Store{bucket: bucket, ctx: ctx}
 }
 
-func (b2 *B2Store) Download(dst io.Writer, encryptionKey, src string) {
-	r := b2.bucket.Object(src).NewReader(b2.ctx)
+func (b2 *B2Store) DownloadDecrypted(dst io.Writer, encryptionKey, fileName string) {
+	r := b2.bucket.Object(fileName).NewReader(b2.ctx)
 	//r.ConcurrentDownloads = downloads
 	defer r.Close()
 
@@ -39,12 +39,10 @@ func (b2 *B2Store) Download(dst io.Writer, encryptionKey, src string) {
 	}
 }
 
-func (b2 *B2Store) Upload(imgFileName string, reader io.Reader) error {
-	imgObj := b2.bucket.Object(imgFileName)
+func (b2 *B2Store) UploadEncrypted(fileName string, reader io.Reader, encryptionKey string) error {
+	imgObj := b2.bucket.Object(fileName)
 	b2Writer := imgObj.NewWriter(b2.ctx)
-	if _, err := io.Copy(b2Writer, reader); err != nil {
-		return err
-	}
+	crypto.Encrypt(b2Writer, encryptionKey, reader)
 	if err := b2Writer.Close(); err != nil {
 		return err
 	}

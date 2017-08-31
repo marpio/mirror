@@ -24,4 +24,5 @@ type DataStoreWriter interface {
 type DataStoreReader interface {
 	GetAll() ([]*Image, error)
 	GetByID(imgID string) ([]*Image, error)
+	GetMonths() ([]*time.Time, error)
 }
