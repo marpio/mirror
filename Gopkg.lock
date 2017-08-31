@@ -2,6 +2,18 @@
 
 
 [[projects]]
+  name = "github.com/gorilla/context"
+  packages = ["."]
+  revision = "1ea25387ff6f684839d82767c1733ff4d4d15d0a"
+  version = "v1.1"
+
+[[projects]]
+  name = "github.com/gorilla/mux"
+  packages = ["."]
+  revision = "bcd8bc72b08df0f70df986b97f95590779502d31"
+  version = "v1.4.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/jmoiron/sqlx"
   packages = [".","reflectx"]
@@ -52,6 +64,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "73a33d6393f83e709ff0c2abdb9848a3f9628a9f13e0eae72f3e1e36eb2f542c"
+  inputs-digest = "64c62602c5c72c6abd2e077ebf968cfa2bb18f9ee9e970f905eb3cb9739b7993"
   solver-name = "gps-cdcl"
   solver-version = 1
