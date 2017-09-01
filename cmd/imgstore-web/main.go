@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/aymerick/raymond"
 	"github.com/marpio/img-store/filestore"
 	"github.com/marpio/img-store/metadatastore"
 
@@ -25,11 +26,35 @@ import (
 func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		months, err := metadataStore.GetMonths()
+		var folders []interface{}
+		for _, m := range months {
+			data := struct {
+				Year  int
+				Month int
+			}{
+				int(m.Year()),
+				int(m.Month()),
+			}
+			folders = append(folders, data)
+		}
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		fmt.Fprint(w, months)
+		ctx := map[string]interface{}{
+			"folders": folders,
+		}
+		tmpl, err := raymond.ParseFile("templates/index.hbs")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		result, err := tmpl.Exec(ctx)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		fmt.Fprint(w, result)
 	}
 }
 
@@ -80,8 +105,9 @@ func main() {
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
-	r.HandleFunc("/year/{year}/month/{month}", mainPageHandler(metadataStore))
+	r.HandleFunc("/year/{y}/month/{m}", mainPageHandler(metadataStore))
 	r.HandleFunc("/files/{name}", fileHandler(fileStore, encryptionKey))
+	r.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(http.Dir("public/"))))
 
 	http.ListenAndServe(":5000", r)
 }

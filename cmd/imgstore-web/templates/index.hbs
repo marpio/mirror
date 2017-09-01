@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Pictures</title>
+    <link rel="stylesheet" href="/public/stylesheets/styles.css">
+  </head>
+  <body>
+    <ul class="folders-container">
+    {{#each folders}}
+    <li class="folder-item"><a href="/year/{{this.year}}/month/{{this.month}}">{{this.year}}-{{this.month}}</a></li>
+    {{/each}}
+    </ul>
+  </body>
+</html>

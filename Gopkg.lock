@@ -2,6 +2,12 @@
 
 
 [[projects]]
+  name = "github.com/aymerick/raymond"
+  packages = [".","ast","lexer","parser"]
+  revision = "a2232af10b53ef1ae5a767f5178db3a6c1dab655"
+  version = "v2.0.1"
+
+[[projects]]
   name = "github.com/gorilla/context"
   packages = ["."]
   revision = "1ea25387ff6f684839d82767c1733ff4d4d15d0a"
@@ -64,6 +70,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "64c62602c5c72c6abd2e077ebf968cfa2bb18f9ee9e970f905eb3cb9739b7993"
+  inputs-digest = "b94f464b028b999874baad3efef8218b4082d5ae07152acaf8960a1b307b872b"
   solver-name = "gps-cdcl"
   solver-version = 1
