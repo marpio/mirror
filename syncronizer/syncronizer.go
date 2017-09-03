@@ -161,7 +161,7 @@ func syncImageStreamed(ctx context.Context, img *imgFileDto, fileStore filestore
 			return err
 		}
 	}
-	createdAtMonth := time.Date(img.CreatedAt.Year(), img.CreatedAt.Month(), 1, 0, 0, 0, 0, img.CreatedAt.Location())
+	createdAtMonth := time.Date(img.CreatedAt.Year(), img.CreatedAt.Month(), 1, 0, 0, 0, 0, time.UTC)
 	imgEntity := &metadatastore.Image{ImgID: imgID, CreatedAt: img.CreatedAt, CreatedAtMonth: createdAtMonth, ImgHash: imgHash, ImgName: b2imgName, ThumbnailName: b2thumbnailName}
 	err = metadataStore.Insert(imgEntity)
 	if err != nil {

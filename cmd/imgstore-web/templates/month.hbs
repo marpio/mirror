@@ -6,8 +6,8 @@
   </head>
   <body>
     <ul class="container">
-    {{#each folders}}
-    <li class="folder-item"><a href="images/year/{{this.year}}/month/{{this.month}}">{{this.year}}-{{this.month}}</a></li>
+    {{#each imgs}}
+    <li class="img-item"><a href="/files/{{this.ImgName}}"><img src="/files/{{this.ThumbnailName}}"/></a></li>
     {{/each}}
     </ul>
   </body>

@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/marpio/img-store/filestore"
+
 	"github.com/joho/godotenv"
 	"github.com/marpio/img-store/filestore/b2"
 	"github.com/marpio/img-store/metadatastore/sqlite"
@@ -29,8 +31,9 @@ func main() {
 	imgDBPath := os.Getenv("IMG_DB")
 
 	ctx := context.Background()
+	bucket := b2.NewB2Bucket(ctx, b2id, b2key, bucketName)
+	fileStore := filestore.NewBackendStore(b2.ReaderProviderFactory(ctx, bucket), b2.WriterProviderFactory(ctx, bucket))
 
-	fileStore := b2.NewB2Store(ctx, b2id, b2key, bucketName)
 	metadataStore := sqlite.NewSqliteMetadataStore(imgDBPath)
 
 	dir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
@@ -57,7 +60,7 @@ func main() {
 
 }
 
-func uploadMetadataStore(imgDBpath string, fileStore *b2.B2Store, encryptionKey string) error {
+func uploadMetadataStore(imgDBpath string, fileStore filestore.FileStore, encryptionKey string) error {
 	dbFileReader, err := os.OpenFile(imgDBpath, os.O_RDONLY, 0666)
 	if err != nil {
 		return err

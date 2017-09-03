@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/aymerick/raymond"
@@ -58,6 +59,42 @@ func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.Re
 	}
 }
 
+func monthImgsHandler(metadataStore metadatastore.DataStoreReader) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		year, err := strconv.Atoi(vars["year"])
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		month, err := strconv.Atoi(vars["month"])
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		m := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+		imgs, err := metadataStore.GetByMonth(&m)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		ctx := map[string][]*metadatastore.Image{
+			"imgs": imgs,
+		}
+		tmpl, err := raymond.ParseFile("templates/month.hbs")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		result, err := tmpl.Exec(ctx)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		fmt.Fprint(w, result)
+	}
+}
+
 func fileHandler(fileStore filestore.FileStoreReader, encryptionKey string) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
@@ -88,26 +125,43 @@ func main() {
 	imgDBPath := os.Getenv("IMG_DB")
 
 	ctx := context.Background()
-
-	fileStore := b2.NewB2Store(ctx, b2id, b2key, bucketName)
-
-	f, err := os.Create(filepath.Base(imgDBPath))
-
+	bucket := b2.NewB2Bucket(ctx, b2id, b2key, bucketName)
+	fileStore := filestore.NewBackendStore(b2.ReaderProviderFactory(ctx, bucket), b2.WriterProviderFactory(ctx, bucket))
+	metadataStore, err := createMetadataStore(imgDBPath, encryptionKey, fileStore)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fileStore.DownloadDecrypted(f, encryptionKey, filepath.Base(imgDBPath))
-	if err := f.Close(); err != nil {
-		log.Fatal(err)
-	}
-
-	metadataStore := sqlite.NewSqliteMetadataStore(imgDBPath)
 
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
-	r.HandleFunc("/year/{y}/month/{m}", mainPageHandler(metadataStore))
+	r.HandleFunc("/images/year/{year}/month/{month}", monthImgsHandler(metadataStore))
 	r.HandleFunc("/files/{name}", fileHandler(fileStore, encryptionKey))
+	r.HandleFunc("/reloaddb", func(w http.ResponseWriter, r *http.Request) {
+		metadataStore, err = createMetadataStore(imgDBPath, encryptionKey, fileStore)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		fmt.Fprint(w, "ok")
+	})
 	r.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(http.Dir("public/"))))
 
 	http.ListenAndServe(":5000", r)
+}
+
+func createMetadataStore(imgDBPath, encryptionKey string, fileStore filestore.FileStoreReader) (metadatastore.DataStore, error) {
+	f, err := os.Create(filepath.Base(imgDBPath))
+
+	if err != nil {
+		log.Print(err)
+		return nil, err
+	}
+	fileStore.DownloadDecrypted(f, encryptionKey, filepath.Base(imgDBPath))
+	if err := f.Close(); err != nil {
+		log.Print(err)
+		return nil, err
+	}
+
+	metadataStore := sqlite.NewSqliteMetadataStore(imgDBPath)
+	return metadataStore, nil
 }

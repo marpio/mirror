@@ -1,6 +1,8 @@
 package metadatastore
 
-import "time"
+import (
+	"time"
+)
 
 type Image struct {
 	ImgID          string    `db:"img_id"`
@@ -24,5 +26,6 @@ type DataStoreWriter interface {
 type DataStoreReader interface {
 	GetAll() ([]*Image, error)
 	GetByID(imgID string) ([]*Image, error)
+	GetByMonth(month *time.Time) ([]*Image, error)
 	GetMonths() ([]*time.Time, error)
 }

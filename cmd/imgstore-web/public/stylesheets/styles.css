@@ -1,4 +1,4 @@
-.folders-container {
+.container {
     padding: 0;
     margin: 0;
     list-style: none;
@@ -22,6 +22,11 @@
     font-weight: bold;
     font-size: 2em;
     text-align: center;
+  }
+  
+  .img-item {
+    padding: 5px;
+    margin-top: 10px;
   }
 
   a {
