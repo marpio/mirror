@@ -10,11 +10,12 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/marpio/img-store/file"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-func ExtractCreatedAt(imgPath string, r *os.File) (time.Time, error) {
+func ExtractCreatedAt(imgPath string, r file.File) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return time.Time{}, err
