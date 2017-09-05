@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/marpio/img-store/metadata"
 
@@ -44,11 +43,15 @@ func main() {
 	flag.Parse()
 
 	if *dir != "" {
-		syncronizer := syncronizer.NewSyncronizer(fileStore, metadataStore, file.ReadFile, file.GetImages, metadata.ExtractCreatedAt, metadata.ExtractThumbnail)
+		syncronizer := syncronizer.NewSyncronizer(fileStore,
+			metadataStore,
+			file.ReadFile,
+			file.GetImages,
+			metadata.ExtractCreatedAt,
+			metadata.ExtractThumbnail)
 		syncronizer.Sync(*dir)
-
-		if err := uploadMetadataStore(filepath.Base(imgDBPath), fileStore); err != nil {
-			log.Fatalf("Error uploading File-Store %v", err)
+		if err := syncronizer.UploadMetadataStore(imgDBPath); err != nil {
+			log.Print("Error uploading DB")
 		}
 	}
 	if *downloadsrc != "" && *downloaddest != "" {
@@ -60,17 +63,6 @@ func main() {
 		fileStore.DownloadDecrypted(f, *downloadsrc)
 	}
 
-}
-
-func uploadMetadataStore(imgDBpath string, fileStore filestore.FileStore) error {
-	dbFileReader, err := os.OpenFile(imgDBpath, os.O_RDONLY, 0666)
-	if err != nil {
-		return err
-	}
-	if err := fileStore.UploadEncrypted(imgDBpath, dbFileReader); err != nil {
-		return err
-	}
-	return nil
 }
 
 func initLog() io.Closer {

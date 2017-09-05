@@ -50,6 +50,17 @@ func (s *Syncronizer) Sync(rootPath string) {
 	log.Println("Sync compleated.")
 }
 
+func (s *Syncronizer) UploadMetadataStore(imgDBpath string) error {
+	dbFileReader, err := s.fileReader(imgDBpath)
+	if err != nil {
+		return err
+	}
+	if err := s.fileStore.UploadEncrypted(imgDBpath, dbFileReader); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (s *Syncronizer) getImagesMetadata(imgsPaths []string) []*imgFileDto {
 	var isImgToOldPredicate = func(createdAt time.Time) bool {
 		return createdAt.Year() < time.Now().Add(-1*time.Hour*24*365*10).Year()
