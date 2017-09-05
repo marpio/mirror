@@ -2,13 +2,9 @@ package syncronizer
 
 import (
 	"bytes"
-	"context"
 	"log"
-	"os"
 	"path"
-	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,61 +24,50 @@ type imgFileDto struct {
 }
 
 type Syncronizer struct {
-	ctx           context.Context
 	fileStore     filestore.FileStore
 	metadataStore metadatastore.DataStore
 	fileReader    func(string) (file.File, error)
+	imgsFinder    func(string) []string
 }
 
-func NewSyncronizer(ctx context.Context, fileStore filestore.FileStore, metadataStore metadatastore.DataStore, fr func(string) (file.File, error)) *Syncronizer {
-	return &Syncronizer{ctx: ctx, fileStore: fileStore, metadataStore: metadataStore, fileReader: fr}
+func NewSyncronizer(fileStore filestore.FileStore, metadataStore metadatastore.DataStore, fr func(string) (file.File, error), imgsFinder func(string) []string) *Syncronizer {
+	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, imgsFinder: imgsFinder}
 }
 
 func (s *Syncronizer) Sync(rootPath string) {
-	imgs := s.getImages(rootPath)
-	log.Printf("Found %v images.", len(imgs))
-	s.syncImages(imgs)
+	imgsPaths := s.imgsFinder(rootPath)
+	imgFiles := s.getImages(imgsPaths)
+
+	log.Printf("Found %v images.", len(imgFiles))
+	s.syncImages(imgFiles)
 	log.Println("Sync compleated.")
 }
 
-func (s *Syncronizer) getImages(rootPath string) []*imgFileDto {
-	imgFiles := make([]*imgFileDto, 0)
-
-	var isJpegPredicate = func(path string, f os.FileInfo) bool {
-		return !f.IsDir() && (strings.HasSuffix(strings.ToLower(f.Name()), ".jpg") || strings.HasSuffix(strings.ToLower(f.Name()), ".jpeg"))
-	}
+func (s *Syncronizer) getImages(imgsPaths []string) []*imgFileDto {
 	var isImgToOldPredicate = func(createdAt time.Time) bool {
 		return createdAt.Year() < time.Now().Add(-1*time.Hour*24*365*10).Year()
 	}
-	err := filepath.Walk(rootPath, func(path string, fi os.FileInfo, err error) error {
+	imgFiles := make([]*imgFileDto, 0)
+	for _, path := range imgsPaths {
+		f, err := s.fileReader(path)
 		if err != nil {
-			log.Printf("Error while walking the directory structure: %v", err.Error())
+			log.Printf("Error opening file %v - err msg: %v", path, err)
+			continue
 		}
-		if isJpegPredicate(path, fi) {
-			f, err := s.fileReader(path)
-			if err != nil {
-				log.Printf("Error opening file %v - err msg: %v", path, err)
-				return err
-			}
-			defer f.Close()
-			imgCreatedAt, err := metadata.ExtractCreatedAt(path, f)
-			if err != nil {
-				log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", path, err)
-				return err
-			}
-			if !isImgToOldPredicate(imgCreatedAt) {
-				imgID, err := crypto.CalculateHash(bytes.NewReader([]byte(path)))
-				if err != nil {
-					log.Printf("Error calculating path's hash - path: %v - err msg: %v", path, err)
-					return err
-				}
-				imgFiles = append(imgFiles, &imgFileDto{ImgID: imgID, Path: path, CreatedAt: imgCreatedAt})
-			}
+		defer f.Close()
+		imgCreatedAt, err := metadata.ExtractCreatedAt(path, f)
+		if err != nil {
+			log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", path, err)
+			continue
 		}
-		return nil
-	})
-	if err != nil {
-		log.Fatalf(err.Error())
+		if !isImgToOldPredicate(imgCreatedAt) {
+			imgID, err := crypto.CalculateHash(bytes.NewReader([]byte(path)))
+			if err != nil {
+				log.Printf("Error calculating path's hash - path: %v - err msg: %v", path, err)
+				continue
+			}
+			imgFiles = append(imgFiles, &imgFileDto{ImgID: imgID, Path: path, CreatedAt: imgCreatedAt})
+		}
 	}
 	return imgFiles
 }
@@ -102,7 +87,7 @@ func (s *Syncronizer) syncImages(images []*imgFileDto) {
 			wg.Add(1)
 			go func(image *imgFileDto) {
 				defer wg.Done()
-				err := s.syncImageStreamed(image)
+				err := s.syncImage(image)
 				if err != nil {
 					log.Printf("Error syncing image: %v", image.Path)
 				}
@@ -113,7 +98,7 @@ func (s *Syncronizer) syncImages(images []*imgFileDto) {
 	s.deleteOutOfSyncMetadata(existingFileIDs)
 }
 
-func (s *Syncronizer) syncImageStreamed(img *imgFileDto) error {
+func (s *Syncronizer) syncImage(img *imgFileDto) error {
 	imgID := img.ImgID
 	f, err := s.fileReader(img.Path)
 	if err != nil {
