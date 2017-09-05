@@ -42,9 +42,7 @@ func main() {
 	flag.Parse()
 
 	if *dir != "" {
-		syncronizer := syncronizer.NewSyncronizer(ctx, fileStore, metadataStore, func(filename string) (file.File, error) {
-			return os.Open(filename)
-		})
+		syncronizer := syncronizer.NewSyncronizer(fileStore, metadataStore, file.ReadFile, file.GetImages)
 		syncronizer.Sync(*dir)
 
 		if err := uploadMetadataStore(filepath.Base(imgDBPath), fileStore); err != nil {

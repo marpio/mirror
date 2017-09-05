@@ -34,3 +34,7 @@ func GetImages(rootPath string) []string {
 	}
 	return imgFiles
 }
+
+func ReadFile(filename string) (File, error) {
+	return os.Open(filename)
+}

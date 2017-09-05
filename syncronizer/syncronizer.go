@@ -36,14 +36,14 @@ func NewSyncronizer(fileStore filestore.FileStore, metadataStore metadatastore.D
 
 func (s *Syncronizer) Sync(rootPath string) {
 	imgsPaths := s.imgsFinder(rootPath)
-	imgFiles := s.getImages(imgsPaths)
+	imgFiles := s.getImagesMetadata(imgsPaths)
 
 	log.Printf("Found %v images.", len(imgFiles))
 	s.syncImages(imgFiles)
 	log.Println("Sync compleated.")
 }
 
-func (s *Syncronizer) getImages(imgsPaths []string) []*imgFileDto {
+func (s *Syncronizer) getImagesMetadata(imgsPaths []string) []*imgFileDto {
 	var isImgToOldPredicate = func(createdAt time.Time) bool {
 		return createdAt.Year() < time.Now().Add(-1*time.Hour*24*365*10).Year()
 	}
