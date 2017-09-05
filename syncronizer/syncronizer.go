@@ -2,6 +2,7 @@ package syncronizer
 
 import (
 	"bytes"
+	"io"
 	"log"
 	"path"
 	"strconv"
@@ -11,7 +12,6 @@ import (
 	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/file"
 	"github.com/marpio/img-store/filestore"
-	"github.com/marpio/img-store/metadata"
 	"github.com/marpio/img-store/metadatastore"
 )
 
@@ -24,14 +24,21 @@ type imgFileDto struct {
 }
 
 type Syncronizer struct {
-	fileStore     filestore.FileStore
-	metadataStore metadatastore.DataStore
-	fileReader    func(string) (file.File, error)
-	imgsFinder    func(string) []string
+	fileStore        filestore.FileStore
+	metadataStore    metadatastore.DataStore
+	fileReader       func(string) (file.File, error)
+	imgsFinder       func(string) []string
+	extractCreatedAt func(imgPath string, r file.File) (time.Time, error)
+	extractThumbnail func(imgPath string, r io.ReadSeeker) ([]byte, error)
 }
 
-func NewSyncronizer(fileStore filestore.FileStore, metadataStore metadatastore.DataStore, fr func(string) (file.File, error), imgsFinder func(string) []string) *Syncronizer {
-	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, imgsFinder: imgsFinder}
+func NewSyncronizer(fileStore filestore.FileStore,
+	metadataStore metadatastore.DataStore,
+	fr func(string) (file.File, error),
+	imgsFinder func(string) []string,
+	extractCreatedAt func(imgPath string, r file.File) (time.Time, error),
+	extractThumbnail func(imgPath string, r io.ReadSeeker) ([]byte, error)) *Syncronizer {
+	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, imgsFinder: imgsFinder, extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumbnail}
 }
 
 func (s *Syncronizer) Sync(rootPath string) {
@@ -55,7 +62,7 @@ func (s *Syncronizer) getImagesMetadata(imgsPaths []string) []*imgFileDto {
 			continue
 		}
 		defer f.Close()
-		imgCreatedAt, err := metadata.ExtractCreatedAt(path, f)
+		imgCreatedAt, err := s.extractCreatedAt(path, f)
 		if err != nil {
 			log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", path, err)
 			continue
@@ -124,7 +131,7 @@ func (s *Syncronizer) syncImage(img *imgFileDto) error {
 		log.Printf("Error reading file %v - err msg: %v", img.Path, err)
 		return err
 	}
-	thumbnail, err := metadata.ExtractThumbnail(img.Path, f)
+	thumbnail, err := s.extractThumbnail(img.Path, f)
 	if err != nil {
 		log.Printf("Error obtaining exif-metadata from file: %v - err msg: %v", img.Path, err)
 		return err

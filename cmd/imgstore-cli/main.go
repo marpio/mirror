@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/marpio/img-store/metadata"
+
 	"github.com/marpio/img-store/file"
 	"github.com/marpio/img-store/filestore"
 
@@ -42,7 +44,7 @@ func main() {
 	flag.Parse()
 
 	if *dir != "" {
-		syncronizer := syncronizer.NewSyncronizer(fileStore, metadataStore, file.ReadFile, file.GetImages)
+		syncronizer := syncronizer.NewSyncronizer(fileStore, metadataStore, file.ReadFile, file.GetImages, metadata.ExtractCreatedAt, metadata.ExtractThumbnail)
 		syncronizer.Sync(*dir)
 
 		if err := uploadMetadataStore(filepath.Base(imgDBPath), fileStore); err != nil {
