@@ -10,6 +10,7 @@ import (
 
 func NewB2(ctx context.Context, b2id string, b2key string, bucketName string) (func(string) io.ReadCloser, func(string) io.WriteCloser, func(string) error) {
 	bucket := newB2Bucket(ctx, b2id, b2key, bucketName)
+
 	r := func(fileName string) io.ReadCloser {
 		rd := bucket.Object(fileName).NewReader(ctx)
 		return rd
@@ -34,7 +35,6 @@ func newB2Bucket(ctx context.Context, b2id string, b2key string, bucketName stri
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	bucket, err := b2Client.Bucket(ctx, bucketName)
 	if err != nil {
 		log.Fatal(err)

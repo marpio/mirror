@@ -3,7 +3,6 @@ package metadata
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"image/jpeg"
 	"io"
 	"os"
@@ -15,7 +14,7 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-func ExtractCreatedAt(imgPath string, r file.File) (time.Time, error) {
+func ExtractCreatedAt(ddir string, r file.File, dirCreatedAt time.Time) time.Time {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return time.Time{}, err
@@ -23,15 +22,19 @@ func ExtractCreatedAt(imgPath string, r file.File) (time.Time, error) {
 	defer r.Close()
 	imgCreatedAt, err := x.DateTime()
 	if err != nil {
-		imgCreatedAt, err = findNeighborImgCreatedAt(imgPath)
-		if err != nil {
-			return time.Time{}, err
+		if (dirCreatedAt != time.Time{}) {
+			return dirCreatedAt, nil
+		}
+
+		imgCreatedAt, found = findNeighborImgCreatedAt(dir)
+		if !found {
+			return time.Time{}
 		}
 	}
-	return imgCreatedAt, nil
+	return imgCreatedAt
 }
 
-func ExtractThumbnail(imgPath string, r io.ReadSeeker) ([]byte, error) {
+func ExtractThumbnail(r io.ReadSeeker) ([]byte, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return nil, err
@@ -65,10 +68,9 @@ func resizeImg(r io.ReadSeeker) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func findNeighborImgCreatedAt(imgPath string) (time.Time, error) {
-	var imgCreatedAt time.Time
-	containingdDir := filepath.Dir(imgPath)
-	matches, _ := filepath.Glob(filepath.Join(containingdDir, "*.jpg"))
+func findNeighborImgCreatedAt(dir string) (time.Time, bool) {
+	var imgCreatedAt = time.Time{}
+	matches, _ := filepath.Glob(filepath.Join(dir, "*.jpg"))
 	for _, imgfile := range matches {
 		imgCreatedAt = func(f string) time.Time {
 			if f == imgPath {
@@ -91,8 +93,8 @@ func findNeighborImgCreatedAt(imgPath string) (time.Time, error) {
 		}(imgfile)
 		foundCreatedAt := imgCreatedAt != time.Time{}
 		if foundCreatedAt {
-			return imgCreatedAt, nil
+			return imgCreatedAt, true
 		}
 	}
-	return time.Time{}, fmt.Errorf("Couldn't extract CreatedAt for file %v", imgPath)
+	return time.Time{}, false
 }
