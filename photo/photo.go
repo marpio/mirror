@@ -1,16 +1,10 @@
 package photo
 
 import (
-	"io"
 	"time"
 
 	"github.com/marpio/img-store/file"
 )
-
-type File interface {
-	io.ReadWriteCloser
-	io.Seeker
-}
 
 type Metadata struct {
 	CreatedAt time.Time
@@ -24,7 +18,7 @@ type FileWithMetadata struct {
 
 type Photo struct {
 	*FileWithMetadata
-	CreatedAtMonth time.Time `db:"created_at_month"`
-	Name           string    `db:"name"`
-	ThumbnailName  string    `db:"thumbnail_name"`
+	CreatedAtMonth time.Time
+	Name           string
+	ThumbnailName  string
 }

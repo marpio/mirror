@@ -23,27 +23,29 @@ type FileInfo struct {
 	ModTime  time.Time
 }
 
-func FindPhotos(rootPath string) []*FileInfo {
-	var isJpegPredicate = func(path string, f os.FileInfo) bool {
+func FindPhotos(rootPath string, isUnchangedFn func(string, time.Time) bool) (newOrChanged []*FileInfo, unchanged map[string]*FileInfo) {
+	var isJpeg = func(path string, f os.FileInfo) bool {
 		return !f.IsDir() && (strings.HasSuffix(strings.ToLower(f.Name()), ".jpg") || strings.HasSuffix(strings.ToLower(f.Name()), ".jpeg"))
 	}
-	photos := make([]*FileInfo, 0)
 	err := filepath.Walk(rootPath, func(path string, fi os.FileInfo, err error) error {
 		if err != nil {
 			log.Printf("Error while walking the directory structure: %v", err.Error())
 		}
-		if isJpegPredicate(path, fi) {
+		if isJpeg(path, fi) {
 			id, _ := crypto.CalculateHash(bytes.NewReader([]byte(path)))
-
+			modTime := fi.ModTime()
 			finf := &FileInfo{PathHash: id, Path: path, ModTime: fi.ModTime()}
-			photos = append(photos, finf)
+			if isUnchangedFn(id, modTime) {
+				unchanged[id] = finf
+			}
+			newOrChanged = append(newOrChanged, finf)
 		}
 		return nil
 	})
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	return photos
+	return newOrChanged, unchanged
 }
 
 func ReadFile(filename string) (File, error) {

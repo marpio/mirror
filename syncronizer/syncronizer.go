@@ -21,10 +21,65 @@ const concurrentFiles = 500
 type Syncronizer struct {
 	fileStore        filestore.FileStore
 	metadataStore    metadatastore.DataStore
-	fileReader       func(string) (photo.File, error)
-	photosFinder     func(string) []*file.FileInfo
-	extractCreatedAt func(imgPath string, r photo.File, dirCreatedAt time.Time) time.Time
+	fileReader       func(string) (file.File, error)
+	photosFinder     func(string, func(id string, modTime time.Time) bool) ([]*file.FileInfo, map[string]*file.FileInfo)
+	extractCreatedAt func(imgPath string, r file.File, dirCreatedAt time.Time) time.Time
 	extractThumbnail func(r io.ReadSeeker) ([]byte, error)
+}
+
+func NewSyncronizer(fileStore filestore.FileStore,
+	metadataStore metadatastore.DataStore,
+	fr func(string) (file.File, error),
+	photosFinder func(string, func(id string, modTime time.Time) bool) ([]*file.FileInfo, map[string]*file.FileInfo),
+	extractCreatedAt func(dir string, r file.File, dirCreatedAt time.Time) time.Time,
+	extractThumbnail func(r io.ReadSeeker) ([]byte, error)) *Syncronizer {
+	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, photosFinder: photosFinder, extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumbnail}
+}
+
+func (s *Syncronizer) Sync(rootPath string) error {
+	log.Print("Syncing...")
+	newOrChanged, unchanged := s.photosFinder(rootPath, isPhotoUnchangedFn(s.metadataStore))
+
+	syncedPhotos, err := s.metadataStore.GetAll()
+	if err != nil {
+		return err
+	}
+	for _, elem := range syncedPhotos {
+		if _, exists := unchanged[elem.PathHash]; !exists {
+			s.metadataStore.Delete(elem.PathHash)
+		}
+	}
+
+	metadataStream := make(chan []*photo.FileWithMetadata)
+	s.extractMetadata(groupByDir(newOrChanged), metadataStream)
+
+	newOrChangedWithMetadata := make([]*photo.FileWithMetadata, len(newOrChanged))
+	for dirFilesMetadata := range metadataStream {
+		newOrChangedWithMetadata = append(newOrChangedWithMetadata, dirFilesMetadata...)
+	}
+	photos := s.syncPhotos(newOrChangedWithMetadata)
+
+	s.metadataStore.Save(photos)
+	log.Println("Sync compleated.")
+	return nil
+}
+
+func (s *Syncronizer) UploadMetadataStore(imgDBpath string) error {
+	dbFileReader, err := s.fileReader(imgDBpath)
+	if err != nil {
+		return err
+	}
+	if err := s.fileStore.UploadEncrypted(imgDBpath, dbFileReader); err != nil {
+		return err
+	}
+	return nil
+}
+
+func isPhotoUnchangedFn(store metadatastore.DataStoreReader) func(id string, modTime time.Time) bool {
+	return func(id string, modTime time.Time) bool {
+		existing, _ := store.GetByID(id)
+		return (len(existing) == 1 && existing[0].ModTime == modTime)
+	}
 }
 
 func groupByDir(photos []*file.FileInfo) map[string][]*file.FileInfo {
@@ -43,25 +98,18 @@ func groupByDir(photos []*file.FileInfo) map[string][]*file.FileInfo {
 	return photosGroupedByDir
 }
 
-func (s *Syncronizer) extractMetadata(pathsGroupedByDir map[string][]*file.FileInfo) []*photo.FileWithMetadata {
-	m := sync.Map{}
+func (s *Syncronizer) extractMetadata(pathsGroupedByDir map[string][]*file.FileInfo, metadataStream chan []*photo.FileWithMetadata) {
 	var wg sync.WaitGroup
+	wg.Add(len(pathsGroupedByDir))
 	for dir, paths := range pathsGroupedByDir {
-		wg.Add(1)
 		go func(directory string, ps []*file.FileInfo) {
 			defer wg.Done()
 			metadata := s.extractMetadataForDir(directory, ps)
-			m.Store(directory, metadata)
+			metadataStream <- metadata
 		}(dir, paths)
 	}
 	wg.Wait()
-	metadata := make([]*photo.FileWithMetadata, 0)
-	for dir := range pathsGroupedByDir {
-		r, _ := m.Load(dir)
-		dirFilesMetadata, _ := r.([]*photo.FileWithMetadata)
-		metadata = append(metadata, dirFilesMetadata...)
-	}
-	return metadata
+	close(metadataStream)
 }
 
 func (s *Syncronizer) extractMetadataForDir(dir string, photos []*file.FileInfo) []*photo.FileWithMetadata {
@@ -85,48 +133,6 @@ func (s *Syncronizer) extractMetadataForDir(dir string, photos []*file.FileInfo)
 		dirCreatedAt = createdAt
 	}
 	return metadata
-}
-
-//func NewSyncronizer(fileStore filestore.FileStore,
-//	metadataStore metadatastore.DataStore,
-//	fr func(string) (file.File, error),
-//	imgsFinder func(string) map[string][]string,
-//	extractCreatedAt func(imgPath string, r file.File, dirCreatedAt time.Time) (time.Time, error),
-//	extractThumbnail func(imgPath string, r io.ReadSeeker) ([]byte, error)) *Syncronizer {
-//	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, imgsFinder: imgsFinder, extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumbnail}
-//}
-
-func (s *Syncronizer) Sync(rootPath string) {
-	log.Print("Syncing...")
-	photos := s.photosFinder(rootPath)
-	outOfSync := make([]*file.FileInfo, 0)
-	for _, p := range photos {
-		existing, err := s.metadataStore.GetByID(p.PathHash)
-		if err != nil {
-			continue
-		}
-		if len(existing) == 1 && existing[0].ModTime != p.ModTime {
-			if err := s.metadataStore.Delete(p.PathHash); err != nil {
-				continue
-			}
-		}
-		outOfSync = append(outOfSync, p)
-	}
-	photosWithMetadata := s.extractMetadata(groupByDir(outOfSync))
-
-	s.syncPhotos(photosWithMetadata)
-	log.Println("Sync compleated.")
-}
-
-func (s *Syncronizer) UploadMetadataStore(imgDBpath string) error {
-	dbFileReader, err := s.fileReader(imgDBpath)
-	if err != nil {
-		return err
-	}
-	if err := s.fileStore.UploadEncrypted(imgDBpath, dbFileReader); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (s *Syncronizer) syncPhotos(photos []*photo.FileWithMetadata) []*photo.Photo {

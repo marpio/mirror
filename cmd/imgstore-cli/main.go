@@ -48,7 +48,7 @@ func main() {
 		syncronizer := syncronizer.NewSyncronizer(fileStore,
 			metadataStore,
 			file.ReadFile,
-			file.GetImagesGroupedByDir,
+			file.FindPhotos,
 			metadata.ExtractCreatedAt,
 			metadata.ExtractThumbnail)
 		syncronizer.Sync(*dir)

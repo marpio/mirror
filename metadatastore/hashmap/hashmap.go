@@ -3,22 +3,21 @@ package hashmap
 import (
 	"encoding/gob"
 	"os"
-	"sync"
 	"time"
 
-	"github.com/marpio/img-store/metadatastore"
+	"github.com/marpio/img-store/photo"
 )
 
 type HashmapMetadataStore struct {
-	data *sync.Map
+	data map[string]*photo.Photo
 }
 
 const dbName string = "photo.db"
 
 func NewHashmapMetadataStore() *HashmapMetadataStore {
-	var decodedMetadata []*metadatastore.Image
+	var decodedMetadata map[string]*photo.Photo
 	if _, err := os.Stat("photo.db"); os.IsNotExist(err) {
-		decodedMetadata = make([]*metadatastore.Image, 0)
+		decodedMetadata = make(map[string]*photo.Photo)
 	} else {
 		f, err := os.Open(dbName)
 		if err != nil {
@@ -27,50 +26,39 @@ func NewHashmapMetadataStore() *HashmapMetadataStore {
 		defer f.Close()
 		dec := gob.NewDecoder(f)
 		if err := dec.Decode(&decodedMetadata); err != nil {
-			decodedMetadata = make([]*metadatastore.Image, 0)
+			decodedMetadata = make(map[string]*photo.Photo)
 		}
 	}
-	d := sync.Map{}
-	for _, m := range decodedMetadata {
-		d.Store(m.ImgID, m)
+	return &HashmapMetadataStore{data: decodedMetadata}
+}
+
+func (datastore *HashmapMetadataStore) GetAll() (all []*photo.Photo, err error) {
+	for _, p := range datastore.data {
+		all = append(all, p)
 	}
-	return &HashmapMetadataStore{data: &d}
+	return all, nil
 }
 
-func (datastore *HashmapMetadataStore) GetAll() ([]*metadatastore.Image, error) {
-	var existingImgs = []*metadatastore.Image{}
-	datastore.data.Range(func(k, v interface{}) bool {
-		img, _ := v.(*metadatastore.Image)
-		existingImgs = append(existingImgs, img)
-		return true
-	})
-	return existingImgs, nil
-}
+func (datastore *HashmapMetadataStore) GetByMonth(month time.Time) ([]*photo.Photo, error) {
+	var res = []*photo.Photo{}
 
-func (datastore *HashmapMetadataStore) GetByMonth(month time.Time) ([]*metadatastore.Image, error) {
-	var existingImgs = []*metadatastore.Image{}
-	datastore.data.Range(func(k, v interface{}) bool {
-		img, _ := v.(*metadatastore.Image)
-		if img.CreatedAtMonth == month {
-			existingImgs = append(existingImgs, img)
+	for _, p := range datastore.data {
+		if p.CreatedAt == month {
+			res = append(res, p)
 		}
-		return true
-	})
-	return existingImgs, nil
-}
-
-func (datastore *HashmapMetadataStore) GetByID(imgID string) ([]*metadatastore.Image, error) {
-	r := make([]*metadatastore.Image, 0)
-	v, ok := datastore.data.Load(imgID)
-	if !ok {
-		return r, nil
 	}
-	res, _ := v.(*metadatastore.Image)
-	r = append(r, res)
-	return r, nil
+	return res, nil
 }
 
-func (datastore *HashmapMetadataStore) Save(metadataEntities []*metadatastore.Image) (ok bool) {
+func (datastore *HashmapMetadataStore) GetByID(id string) ([]*photo.Photo, error) {
+	res := make([]*photo.Photo, 0)
+	if p, ok := datastore.data[id]; ok {
+		res = append(res, p)
+	}
+	return res, nil
+}
+
+func (datastore *HashmapMetadataStore) Save(metadataEntities []*photo.Photo) (ok bool) {
 	f, err := os.Create(dbName)
 	if err != nil {
 		return false
@@ -84,12 +72,20 @@ func (datastore *HashmapMetadataStore) Save(metadataEntities []*metadatastore.Im
 }
 
 func (datastore *HashmapMetadataStore) Delete(imgID string) error {
-	datastore.data.Delete(imgID)
+	delete(datastore.data, imgID)
 	return nil
 }
 
 func (datastore *HashmapMetadataStore) GetMonths() ([]*time.Time, error) {
-	var res = []*time.Time{}
-
-	return res, nil
+	var res = make(map[time.Time]interface{})
+	for _, p := range datastore.data {
+		if _, ok := res[p.CreatedAtMonth]; !ok {
+			res[p.CreatedAtMonth] = nil
+		}
+	}
+	list := make([]*time.Time, len(res))
+	for t, _ := range res {
+		list = append(list, &t)
+	}
+	return list, nil
 }
