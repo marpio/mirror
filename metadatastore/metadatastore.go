@@ -12,8 +12,9 @@ type DataStore interface {
 }
 
 type DataStoreWriter interface {
-	Save(metadataEntities []*photo.Photo) (ok bool)
+	Add(photo *photo.Photo) error
 	Delete(imgID string) error
+	Commit() error
 }
 
 type DataStoreReader interface {

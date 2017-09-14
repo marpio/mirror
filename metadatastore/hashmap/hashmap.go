@@ -58,21 +58,22 @@ func (datastore *HashmapMetadataStore) GetByID(id string) ([]*photo.Photo, error
 	return res, nil
 }
 
-func (datastore *HashmapMetadataStore) Save(metadataEntities []*photo.Photo) (ok bool) {
-	res := make(map[string]*photo.Photo)
-	for _, p := range metadataEntities {
-		res[p.PathHash] = p
-	}
+func (datastore *HashmapMetadataStore) Add(photo *photo.Photo) error {
+	datastore.data[photo.PathHash] = photo
+	return nil
+}
+
+func (datastore *HashmapMetadataStore) Commit() error {
 	f, err := os.Create(dbName)
 	if err != nil {
-		return false
+		return err
 	}
 	defer f.Close()
 	e := gob.NewEncoder(f)
-	if err := e.Encode(res); err != nil {
-		return false
+	if err := e.Encode(datastore.data); err != nil {
+		return err
 	}
-	return true
+	return nil
 }
 
 func (datastore *HashmapMetadataStore) Delete(imgID string) error {

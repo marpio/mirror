@@ -14,19 +14,18 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-func ExtractCreatedAt(dir string, r file.File, dirCreatedAt time.Time) time.Time {
+func ExtractCreatedAt(dir string, path string, r file.File, dirCreatedAt time.Time) time.Time {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return dirCreatedAt
 	}
-	defer r.Close()
 	imgCreatedAt, err := x.DateTime()
 	if err != nil {
 		if (dirCreatedAt != time.Time{}) {
 			return dirCreatedAt
 		}
 
-		imgCreatedAt, found := findNeighborImgCreatedAt(dir)
+		imgCreatedAt, found := findNeighborImgCreatedAt(dir, path)
 		if !found {
 			return time.Time{}
 		}
@@ -69,10 +68,13 @@ func resizeImg(r io.ReadSeeker) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func findNeighborImgCreatedAt(dir string) (time.Time, bool) {
+func findNeighborImgCreatedAt(dir string, path string) (time.Time, bool) {
 	var imgCreatedAt = time.Time{}
 	matches, _ := filepath.Glob(filepath.Join(dir, "*.jpg"))
 	for _, imgfile := range matches {
+		if imgfile == path {
+			continue
+		}
 		imgCreatedAt = func(f string) time.Time {
 			reader, err := os.Open(f)
 			if err != nil {

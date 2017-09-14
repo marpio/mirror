@@ -7,18 +7,19 @@ import (
 )
 
 type Metadata struct {
-	CreatedAt time.Time
-	Thumbnail []byte
+	Name           string
+	ThumbnailName  string
+	CreatedAt      time.Time
+	CreatedAtMonth time.Time
 }
 
 type FileWithMetadata struct {
 	*file.FileInfo
 	*Metadata
+	Thumbnail []byte
 }
 
 type Photo struct {
-	*FileWithMetadata
-	CreatedAtMonth time.Time
-	Name           string
-	ThumbnailName  string
+	*file.FileInfo
+	*Metadata
 }
