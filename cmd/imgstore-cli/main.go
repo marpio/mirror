@@ -30,14 +30,14 @@ func main() {
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
-	imgDBPath := os.Getenv("IMG_DB")
+	dbPath := os.Getenv("IMG_DB")
 
 	ctx := context.Background()
 
 	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
 
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
-	metadataStore := hashmap.NewHashmapMetadataStore() //sqlite.NewSqliteMetadataStore(imgDBPath)
+	metadataStore := hashmap.NewHashmapMetadataStore(dbPath)
 
 	dir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
 	downloadsrc := flag.String("src", "", "File to ....")
@@ -52,7 +52,7 @@ func main() {
 			metadata.ExtractCreatedAt,
 			metadata.ExtractThumbnail)
 		syncronizer.Sync(*dir)
-		if err := syncronizer.UploadMetadataStore(imgDBPath); err != nil {
+		if err := syncronizer.UploadMetadataStore(dbPath); err != nil {
 			log.Print("Error uploading DB")
 		}
 	}

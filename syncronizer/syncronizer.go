@@ -16,31 +16,31 @@ import (
 	"github.com/marpio/img-store/photo"
 )
 
-const concurrentFiles = 500
+const maxConcurrentUploads = 10
 
 type Syncronizer struct {
 	fileStore        filestore.FileStore
 	metadataStore    metadatastore.DataStore
 	fileReader       func(string) (file.File, error)
-	photosFinder     func(string, func(id string, modTime time.Time) bool) ([]*file.FileInfo, map[string]*file.FileInfo)
-	extractCreatedAt func(imgPath string, path string, r file.File, dirCreatedAt time.Time) time.Time
+	photosFinder     func(string, func(id string, modTime time.Time) bool) ([]*file.FileInfo, map[string]struct{})
+	extractCreatedAt func(imgPath string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error)
 	extractThumbnail func(r io.ReadSeeker) ([]byte, error)
 }
 
 func NewSyncronizer(fileStore filestore.FileStore,
 	metadataStore metadatastore.DataStore,
 	fr func(string) (file.File, error),
-	photosFinder func(string, func(id string, modTime time.Time) bool) ([]*file.FileInfo, map[string]*file.FileInfo),
-	extractCreatedAt func(dir string, path string, r file.File, dirCreatedAt time.Time) time.Time,
+	photosFinder func(string, func(id string, modTime time.Time) bool) ([]*file.FileInfo, map[string]struct{}),
+	extractCreatedAt func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error),
 	extractThumbnail func(r io.ReadSeeker) ([]byte, error)) *Syncronizer {
 	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, photosFinder: photosFinder, extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumbnail}
 }
 
 func (s *Syncronizer) Sync(rootPath string) error {
 	log.Print("Syncing...")
-	newOrChanged, unchanged := s.photosFinder(rootPath, isPhotoUnchangedFn(s.metadataStore))
+	newOrChanged, unchangedIDs := s.photosFinder(rootPath, isPhotoUnchangedFn(s.metadataStore))
 
-	s.syncDatastore(unchanged)
+	s.metadataStore.DeleteAllExcept(unchangedIDs)
 
 	metadataStream := s.extractMetadata(groupByDir(newOrChanged))
 	uploaded := s.uploadPhotos(metadataStream)
@@ -48,14 +48,14 @@ func (s *Syncronizer) Sync(rootPath string) error {
 		s.metadataStore.Add(u)
 	}
 	if err := s.metadataStore.Commit(); err != nil {
-		log.Printf("Error commiting DB %v", err)
+		log.Printf("Error commiting to DB %v", err)
 	}
 	log.Println("Sync compleated.")
 	return nil
 }
 
 func (s *Syncronizer) extractMetadata(pathsGroupedByDir map[string][]*file.FileInfo) <-chan *photo.FileWithMetadata {
-	metadataStream := make(chan *photo.FileWithMetadata)
+	metadataStream := make(chan *photo.FileWithMetadata, 2*maxConcurrentUploads)
 	go func() {
 		defer close(metadataStream)
 		var wg sync.WaitGroup
@@ -73,41 +73,34 @@ func (s *Syncronizer) extractMetadata(pathsGroupedByDir map[string][]*file.FileI
 
 func (s *Syncronizer) extractMetadataForDir(dir string, photos []*file.FileInfo, metadataStream chan<- *photo.FileWithMetadata) {
 	dirCreatedAt := time.Time{}
-	for _, p := range photos {
-		f, err := s.fileReader(p.Path)
-		if err != nil {
-			log.Printf("Error opening file %v - err msg: %v", p.Path, err)
-			continue
-		}
-		defer f.Close()
+	for _, ph := range photos {
+		func(p *file.FileInfo) {
+			f, err := s.fileReader(p.Path)
+			if err != nil {
+				log.Printf("Error opening file %v - err msg: %v", p.Path, err)
+				return
+			}
+			defer f.Close()
 
-		createdAt := s.extractCreatedAt(dir, p.Path, f, dirCreatedAt)
-		createdAtMonth := time.Date(createdAt.Year(), createdAt.Month(), 1, 0, 0, 0, 0, time.UTC)
-		f.Seek(0, 0)
-		thumb, err := s.extractThumbnail(f)
-		if err != nil {
-			log.Printf("Can't extract thumbnail: %v", err)
-			continue
-		}
-		thumbnailName := generateUniqueFileName("thumb", p.Path, createdAt)
-		imgName := generateUniqueFileName("orig", p.Path, createdAt)
-		res := &photo.FileWithMetadata{FileInfo: p, Thumbnail: thumb, Metadata: &photo.Metadata{Name: imgName, ThumbnailName: thumbnailName, CreatedAt: createdAt, CreatedAtMonth: createdAtMonth}}
-		dirCreatedAt = createdAt
-		metadataStream <- res
+			createdAt, err := s.extractCreatedAt(dir, p.Path, f, dirCreatedAt)
+			if err != nil {
+				log.Printf("Can't extract created at: %v", err)
+				return
+			}
+			createdAtMonth := time.Date(createdAt.Year(), createdAt.Month(), 1, 0, 0, 0, 0, time.UTC)
+			f.Seek(0, 0)
+			thumb, err := s.extractThumbnail(f)
+			if err != nil {
+				log.Printf("Can't extract thumbnail: %v", err)
+				return
+			}
+			thumbnailName := generateUniqueFileName("thumb", p.Path, createdAt)
+			imgName := generateUniqueFileName("orig", p.Path, createdAt)
+			res := &photo.FileWithMetadata{FileInfo: p, Thumbnail: thumb, Metadata: &photo.Metadata{Name: imgName, ThumbnailName: thumbnailName, CreatedAt: createdAt, CreatedAtMonth: createdAtMonth}}
+			dirCreatedAt = createdAt
+			metadataStream <- res
+		}(ph)
 	}
-}
-
-func (s *Syncronizer) syncDatastore(unchanged map[string]*file.FileInfo) error {
-	syncedPhotos, err := s.metadataStore.GetAll()
-	if err != nil {
-		return err
-	}
-	for _, elem := range syncedPhotos {
-		if _, exists := unchanged[elem.PathHash]; !exists {
-			s.metadataStore.Delete(elem.PathHash)
-		}
-	}
-	return nil
 }
 
 func (s *Syncronizer) UploadMetadataStore(imgDBpath string) error {
@@ -146,13 +139,17 @@ func groupByDir(photos []*file.FileInfo) map[string][]*file.FileInfo {
 
 func (s *Syncronizer) uploadPhotos(metadataStream <-chan *photo.FileWithMetadata) <-chan *photo.Photo {
 	uploadedPhotosStream := make(chan *photo.Photo)
+
 	go func() {
+		limiter := make(chan bool, maxConcurrentUploads)
 		var wg sync.WaitGroup
 		defer close(uploadedPhotosStream)
 		for metaData := range metadataStream {
+			limiter <- true
 			wg.Add(1)
 			go func(m *photo.FileWithMetadata) {
 				defer wg.Done()
+				defer func() { <-limiter }()
 				p, err := s.uploadPhoto(m)
 				if err != nil {
 					log.Printf("Error uploading file: %v - err: %v", m.Path, err)
@@ -188,20 +185,6 @@ func (s *Syncronizer) uploadPhoto(img *photo.FileWithMetadata) (*photo.Photo, er
 
 	return p, nil
 }
-
-//func (s *Syncronizer) deleteOutOfSyncMetadata(existingFileIDs map[string]bool) {
-//	metadata, err := s.metadataStore.GetAll()
-//	if err != nil {
-//		log.Printf("Error geting metadata: %v", err.Error())
-//	}
-//	for _, img := range metadata {
-//		if _, exists := existingFileIDs[img.PathHash]; !exists {
-//			s.metadataStore.Delete(img.ImgID)
-//			s.fileStore.Delete(img.ImgName)
-//			s.fileStore.Delete(img.ThumbnailName)
-//		}
-//	}
-//}
 
 func generateUniqueFileName(prefix string, imgPath string, imgCreatedAt time.Time) string {
 	nano := strconv.FormatInt(imgCreatedAt.UnixNano(), 10)

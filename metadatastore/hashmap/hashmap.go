@@ -12,11 +12,12 @@ type HashmapMetadataStore struct {
 	data map[string]*photo.Photo
 }
 
-const dbName string = "photo.db"
+var dbName string
 
-func NewHashmapMetadataStore() *HashmapMetadataStore {
+func NewHashmapMetadataStore(dbFileName string) *HashmapMetadataStore {
+	dbName = dbFileName
 	var decodedMetadata map[string]*photo.Photo
-	if _, err := os.Stat("photo.db"); os.IsNotExist(err) {
+	if _, err := os.Stat(dbName); os.IsNotExist(err) {
 		decodedMetadata = make(map[string]*photo.Photo)
 	} else {
 		f, err := os.Open(dbName)
@@ -81,11 +82,19 @@ func (datastore *HashmapMetadataStore) Delete(imgID string) error {
 	return nil
 }
 
+func (datastore *HashmapMetadataStore) DeleteAllExcept(ids map[string]struct{}) {
+	for id := range datastore.data {
+		if _, ok := ids[id]; !ok {
+			delete(datastore.data, id)
+		}
+	}
+}
+
 func (datastore *HashmapMetadataStore) GetMonths() ([]*time.Time, error) {
-	var res = make(map[time.Time]interface{})
+	var res = make(map[time.Time]struct{})
 	for _, p := range datastore.data {
 		if _, ok := res[p.CreatedAtMonth]; !ok {
-			res[p.CreatedAtMonth] = nil
+			res[p.CreatedAtMonth] = struct{}{}
 		}
 	}
 	list := make([]*time.Time, len(res))

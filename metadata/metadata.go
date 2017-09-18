@@ -14,24 +14,24 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-func ExtractCreatedAt(dir string, path string, r file.File, dirCreatedAt time.Time) time.Time {
+func ExtractCreatedAt(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
-		return dirCreatedAt
+		return time.Time{}, err
 	}
 	imgCreatedAt, err := x.DateTime()
 	if err != nil {
 		if (dirCreatedAt != time.Time{}) {
-			return dirCreatedAt
+			return dirCreatedAt, nil
 		}
 
 		imgCreatedAt, found := findNeighborImgCreatedAt(dir, path)
 		if !found {
-			return time.Time{}
+			return time.Time{}, nil
 		}
-		return imgCreatedAt
+		return imgCreatedAt, nil
 	}
-	return imgCreatedAt
+	return imgCreatedAt, nil
 }
 
 func ExtractThumbnail(r io.ReadSeeker) ([]byte, error) {

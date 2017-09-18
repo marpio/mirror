@@ -13,6 +13,7 @@ type DataStore interface {
 
 type DataStoreWriter interface {
 	Add(photo *photo.Photo) error
+	DeleteAllExcept(ids map[string]struct{})
 	Delete(imgID string) error
 	Commit() error
 }
