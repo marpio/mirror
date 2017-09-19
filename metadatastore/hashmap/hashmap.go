@@ -3,10 +3,28 @@ package hashmap
 import (
 	"encoding/gob"
 	"os"
+	"sort"
 	"time"
 
 	"github.com/marpio/img-store/photo"
 )
+
+type timeSlice []time.Time
+
+// Forward request for length
+func (p timeSlice) Len() int {
+	return len(p)
+}
+
+// Define compare
+func (p timeSlice) Less(i, j int) bool {
+	return p[i].Before(p[j])
+}
+
+// Define swap over an array
+func (p timeSlice) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
+}
 
 type HashmapMetadataStore struct {
 	data map[string]*photo.Photo
@@ -44,7 +62,7 @@ func (datastore *HashmapMetadataStore) GetByMonth(month time.Time) ([]*photo.Pho
 	var res = []*photo.Photo{}
 
 	for _, p := range datastore.data {
-		if p.CreatedAt == month {
+		if p.CreatedAtMonth == month {
 			res = append(res, p)
 		}
 	}
@@ -78,28 +96,21 @@ func (datastore *HashmapMetadataStore) Commit() error {
 }
 
 func (datastore *HashmapMetadataStore) Delete(imgID string) error {
-	delete(datastore.data, imgID)
+	if _, ok := datastore.data[imgID]; ok {
+		delete(datastore.data, imgID)
+	}
 	return nil
 }
 
-func (datastore *HashmapMetadataStore) DeleteAllExcept(ids map[string]struct{}) {
-	for id := range datastore.data {
-		if _, ok := ids[id]; !ok {
-			delete(datastore.data, id)
-		}
-	}
-}
-
-func (datastore *HashmapMetadataStore) GetMonths() ([]*time.Time, error) {
-	var res = make(map[time.Time]struct{})
+func (datastore *HashmapMetadataStore) GetMonths() ([]time.Time, error) {
+	months := make([]time.Time, 0)
+	var m = make(map[time.Time]struct{})
 	for _, p := range datastore.data {
-		if _, ok := res[p.CreatedAtMonth]; !ok {
-			res[p.CreatedAtMonth] = struct{}{}
+		if _, ok := m[p.CreatedAtMonth]; !ok {
+			m[p.CreatedAtMonth] = struct{}{}
+			months = append(months, p.CreatedAtMonth)
 		}
 	}
-	list := make([]*time.Time, len(res))
-	for t, _ := range res {
-		list = append(list, &t)
-	}
-	return list, nil
+	sort.Sort(timeSlice(months))
+	return months, nil
 }

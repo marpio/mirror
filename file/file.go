@@ -23,8 +23,7 @@ type FileInfo struct {
 	ModTime  time.Time
 }
 
-func FindPhotos(rootPath string, isUnchangedFn func(string, time.Time) bool) (newOrChanged []*FileInfo, unchanged map[string]struct{}) {
-	unchanged = make(map[string]struct{})
+func FindPhotos(rootPath string, isUnchangedFn func(string, time.Time) bool) (newOrChanged []*FileInfo) {
 	newOrChanged = make([]*FileInfo, 0)
 	var isJpeg = func(path string, f os.FileInfo) bool {
 		return !f.IsDir() && (strings.HasSuffix(strings.ToLower(f.Name()), ".jpg") || strings.HasSuffix(strings.ToLower(f.Name()), ".jpeg"))
@@ -37,9 +36,7 @@ func FindPhotos(rootPath string, isUnchangedFn func(string, time.Time) bool) (ne
 			id, _ := crypto.CalculateHash(bytes.NewReader([]byte(path)))
 			modTime := fi.ModTime()
 			finf := &FileInfo{PathHash: id, Path: path, ModTime: fi.ModTime()}
-			if isUnchangedFn(id, modTime) {
-				unchanged[id] = struct{}{}
-			} else {
+			if !isUnchangedFn(id, modTime) {
 				newOrChanged = append(newOrChanged, finf)
 			}
 		}
@@ -48,7 +45,7 @@ func FindPhotos(rootPath string, isUnchangedFn func(string, time.Time) bool) (ne
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	return newOrChanged, unchanged
+	return newOrChanged
 }
 
 func ReadFile(filename string) (File, error) {

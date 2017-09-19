@@ -30,8 +30,8 @@ func main() {
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
-	dbPath := os.Getenv("IMG_DB")
-
+	dbFileName := os.Getenv("IMG_DB")
+	dbPath := dbFileName
 	ctx := context.Background()
 
 	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
@@ -39,9 +39,9 @@ func main() {
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
 	metadataStore := hashmap.NewHashmapMetadataStore(dbPath)
 
-	dir := flag.String("syncdir", "", "Abs path to the directory containing pictures")
+	dir := flag.String("sync", "", "Abs path to the directory containing pictures")
 	downloadsrc := flag.String("src", "", "File to ....")
-	downloaddest := flag.String("dest", "", "File to ....")
+	downloaddest := flag.String("dst", "", "File to ....")
 	flag.Parse()
 
 	if *dir != "" {

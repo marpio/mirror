@@ -22,7 +22,7 @@ type Syncronizer struct {
 	fileStore        filestore.FileStore
 	metadataStore    metadatastore.DataStore
 	fileReader       func(string) (file.File, error)
-	photosFinder     func(string, func(id string, modTime time.Time) bool) ([]*file.FileInfo, map[string]struct{})
+	photosFinder     func(string, func(id string, modTime time.Time) bool) []*file.FileInfo
 	extractCreatedAt func(imgPath string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error)
 	extractThumbnail func(r io.ReadSeeker) ([]byte, error)
 }
@@ -30,7 +30,7 @@ type Syncronizer struct {
 func NewSyncronizer(fileStore filestore.FileStore,
 	metadataStore metadatastore.DataStore,
 	fr func(string) (file.File, error),
-	photosFinder func(string, func(id string, modTime time.Time) bool) ([]*file.FileInfo, map[string]struct{}),
+	photosFinder func(string, func(id string, modTime time.Time) bool) []*file.FileInfo,
 	extractCreatedAt func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error),
 	extractThumbnail func(r io.ReadSeeker) ([]byte, error)) *Syncronizer {
 	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, photosFinder: photosFinder, extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumbnail}
@@ -38,19 +38,31 @@ func NewSyncronizer(fileStore filestore.FileStore,
 
 func (s *Syncronizer) Sync(rootPath string) error {
 	log.Print("Syncing...")
-	newOrChanged, unchangedIDs := s.photosFinder(rootPath, isPhotoUnchangedFn(s.metadataStore))
-
-	s.metadataStore.DeleteAllExcept(unchangedIDs)
+	newOrChanged := s.photosFinder(rootPath, isPhotoUnchangedFn(s.metadataStore))
+	for _, p := range newOrChanged {
+		s.metadataStore.Delete(p.PathHash)
+	}
 
 	metadataStream := s.extractMetadata(groupByDir(newOrChanged))
-	uploaded := s.uploadPhotos(metadataStream)
-	for u := range uploaded {
+	photosStream := s.uploadPhotos(metadataStream)
+	for u := range photosStream {
 		s.metadataStore.Add(u)
 	}
 	if err := s.metadataStore.Commit(); err != nil {
 		log.Printf("Error commiting to DB %v", err)
 	}
 	log.Println("Sync compleated.")
+	return nil
+}
+
+func (s *Syncronizer) UploadMetadataStore(imgDBpath string) error {
+	dbFileReader, err := s.fileReader(imgDBpath)
+	if err != nil {
+		return err
+	}
+	if err := s.fileStore.UploadEncrypted(imgDBpath, dbFileReader); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -101,17 +113,6 @@ func (s *Syncronizer) extractMetadataForDir(dir string, photos []*file.FileInfo,
 			metadataStream <- res
 		}(ph)
 	}
-}
-
-func (s *Syncronizer) UploadMetadataStore(imgDBpath string) error {
-	dbFileReader, err := s.fileReader(imgDBpath)
-	if err != nil {
-		return err
-	}
-	if err := s.fileStore.UploadEncrypted(imgDBpath, dbFileReader); err != nil {
-		return err
-	}
-	return nil
 }
 
 func isPhotoUnchangedFn(store metadatastore.DataStoreReader) func(id string, modTime time.Time) bool {

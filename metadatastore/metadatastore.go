@@ -13,7 +13,6 @@ type DataStore interface {
 
 type DataStoreWriter interface {
 	Add(photo *photo.Photo) error
-	DeleteAllExcept(ids map[string]struct{})
 	Delete(imgID string) error
 	Commit() error
 }
@@ -22,5 +21,5 @@ type DataStoreReader interface {
 	GetAll() ([]*photo.Photo, error)
 	GetByID(imgID string) ([]*photo.Photo, error)
 	GetByMonth(month time.Time) ([]*photo.Photo, error)
-	GetMonths() ([]*time.Time, error)
+	GetMonths() ([]time.Time, error)
 }

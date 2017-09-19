@@ -16,11 +16,12 @@ import (
 	"github.com/aymerick/raymond"
 	"github.com/marpio/img-store/filestore"
 	"github.com/marpio/img-store/metadatastore"
+	"github.com/marpio/img-store/metadatastore/hashmap"
+	"github.com/marpio/img-store/photo"
 
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/marpio/img-store/filestore/b2"
-	"github.com/marpio/img-store/metadatastore/sqlite"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -32,12 +33,12 @@ func main() {
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
-	imgDBPath := os.Getenv("IMG_DB")
-
+	dbFileName := os.Getenv("IMG_DB")
+	imgDBPath := dbFileName
 	ctx := context.Background()
 	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
-	metadataStore, err := createMetadataStore(imgDBPath, encryptionKey, fileStore)
+	metadataStore, err := createMetadataStore(imgDBPath, fileStore)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -51,7 +52,7 @@ func configureRouter(metadataStore metadatastore.DataStoreReader, fileStore file
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
 	r.HandleFunc("/images/year/{year}/month/{month}", monthImgsHandler(metadataStore))
-	r.HandleFunc("/files/{name}", fileHandler(fileStore, encryptionKey))
+	r.HandleFunc("/files/{name}", fileHandler(fileStore))
 	r.HandleFunc("/reloaddb", func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		metadataStore, err = createMetadataStore(imgDBPath, fileStore)
@@ -78,7 +79,7 @@ func createMetadataStore(imgDBPath string, fileStore filestore.FileStoreReader) 
 		return nil, err
 	}
 
-	metadataStore := sqlite.NewSqliteMetadataStore(imgDBPath)
+	metadataStore := hashmap.NewHashmapMetadataStore(imgDBPath)
 	return metadataStore, nil
 }
 
@@ -131,12 +132,12 @@ func monthImgsHandler(metadataStore metadatastore.DataStoreReader) func(w http.R
 			return
 		}
 		m := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
-		imgs, err := metadataStore.GetByMonth(&m)
+		imgs, err := metadataStore.GetByMonth(m)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		ctx := map[string][]*metadatastore.Image{
+		ctx := map[string][]*photo.Photo{
 			"imgs": imgs,
 		}
 		tmpl, err := raymond.ParseFile("templates/month.hbs")
@@ -153,7 +154,7 @@ func monthImgsHandler(metadataStore metadatastore.DataStoreReader) func(w http.R
 	}
 }
 
-func fileHandler(fileStore filestore.FileStoreReader, encryptionKey string) func(w http.ResponseWriter, r *http.Request) {
+func fileHandler(fileStore filestore.FileStoreReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		fileName := vars["name"]
@@ -161,7 +162,7 @@ func fileHandler(fileStore filestore.FileStoreReader, encryptionKey string) func
 		pr, pw := io.Pipe()
 		go func() {
 			defer pw.Close()
-			fileStore.DownloadDecrypted(pw, encryptionKey, fileName)
+			fileStore.DownloadDecrypted(pw, fileName)
 		}()
 		b, err := ioutil.ReadAll(pr)
 		if err != nil {
