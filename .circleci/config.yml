@@ -21,8 +21,8 @@ jobs:
       - run: 
           name: Build cli and web
           command: |
-            cd imgstore-cli && go build
-            cd imgstore-web && go build
+            cd cmd/imgstore-cli/ && go build
+            cd cmd/imgstore-web/ && go build
 
       - store_artifacts:
           path: /tmp/test-results
