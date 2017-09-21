@@ -21,6 +21,7 @@ jobs:
       - run: 
           name: Build cli and web
           command: |
+            ls
             cd cmd/imgstore-cli/ && go build
             cd cmd/imgstore-web/ && go build
 
