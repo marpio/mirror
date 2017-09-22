@@ -26,7 +26,7 @@ jobs:
                     rm profile.out
                 fi
             done
-      - run: bash <(curl -s https://codecov.io/bash)
+      - run: cd $TEST_RESULTS && bash <(curl -s https://codecov.io/bash)
       - run: 
           name: Build cli and web
           command: |
