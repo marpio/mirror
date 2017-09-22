@@ -33,13 +33,13 @@ jobs:
                     rm profile.out
                 fi
             done
-      - run:
-          name: Upload coverage report to codecov.io
-          command: |
-            cd $TEST_RESULTS && bash <(curl -s https://codecov.io/bash)
       - store_artifacts:
           path: /tmp/test-results
           destination: raw-test-output
 
       - store_test_results:
           path: /tmp/test-results
+      - run:
+          name: Upload coverage report to codecov.io
+          command: |
+            bash <(curl -s https://codecov.io/bash)
