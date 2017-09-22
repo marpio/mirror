@@ -12,26 +12,31 @@ jobs:
 
     steps:
       - checkout
+      - run: 
+          name: Build cli and web
+          command: |
+            go build ./cmd/...
       - run: mkdir -p $TEST_RESULTS
-
       - run:
           name: Run unit tests and code cov
           command: |
             set -e
             echo "" > ${TEST_RESULTS}/coverage.txt
             for d in $(go list ./... | grep -v vendor); do
-                go test -race -coverprofile=profile.out -covermode=atomic $d | tee ${TEST_RESULTS}/test.out
+                go test -race -coverprofile=profile.out -covermode=atomic $d | tee test.out
+                if [ -f test.out ]; then
+                    cat test.out >> ${TEST_RESULTS}/tests.out
+                    rm test.out
+                fi
                 if [ -f profile.out ]; then
                     cat profile.out >> ${TEST_RESULTS}/coverage.txt
                     rm profile.out
                 fi
             done
-      - run: cd $TEST_RESULTS && bash <(curl -s https://codecov.io/bash)
-      - run: 
-          name: Build cli and web
+      - run:
+          name: Upload coverage report to codecov.io
           command: |
-            go build ./cmd/...
-
+            cd $TEST_RESULTS && bash <(curl -s https://codecov.io/bash)
       - store_artifacts:
           path: /tmp/test-results
           destination: raw-test-output
