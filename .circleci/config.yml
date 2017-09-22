@@ -26,6 +26,7 @@ jobs:
                     rm profile.out
                 fi
             done
+      - run: bash <(curl -s https://codecov.io/bash)
       - run: 
           name: Build cli and web
           command: |
@@ -37,5 +38,3 @@ jobs:
 
       - store_test_results:
           path: /tmp/test-results
-          
-      - run: bash <(curl -s https://codecov.io/bash)
