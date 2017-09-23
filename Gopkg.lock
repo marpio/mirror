@@ -20,12 +20,6 @@
   version = "v1.4.0"
 
 [[projects]]
-  name = "github.com/joho/godotenv"
-  packages = ["."]
-  revision = "726cc8b906e3d31c70a9671c90a13716a8d3f50d"
-  version = "v1.1"
-
-[[projects]]
   name = "github.com/kurin/blazer"
   packages = ["b2","base","internal/b2types","internal/blog"]
   revision = "612082ed2430716569f1ec816fc6ade849020816"
@@ -58,6 +52,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8b42b80db470e0279bbb9601034e4b3feb13c68a58b5e2a23857240ebb52fae0"
+  inputs-digest = "2f08731a2701ec20f6d4dc640a176ea93031a9498e56199c2ad1642f00aa8fef"
   solver-name = "gps-cdcl"
   solver-version = 1
