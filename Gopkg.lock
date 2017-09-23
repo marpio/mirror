@@ -32,12 +32,6 @@
   version = "v0.1.0"
 
 [[projects]]
-  name = "github.com/mattn/go-sqlite3"
-  packages = ["."]
-  revision = "ca5e3819723d8eeaf170ad510e7da1d6d2e94a08"
-  version = "v1.2.0"
-
-[[projects]]
   branch = "master"
   name = "github.com/nfnt/resize"
   packages = ["."]
@@ -64,6 +58,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a147453609b0c29ddf5fcf73d3534f14710d4f91133efc3a87a9fa4c584961da"
+  inputs-digest = "8b42b80db470e0279bbb9601034e4b3feb13c68a58b5e2a23857240ebb52fae0"
   solver-name = "gps-cdcl"
   solver-version = 1

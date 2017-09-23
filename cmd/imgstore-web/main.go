@@ -22,7 +22,6 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/joho/godotenv"
 	"github.com/marpio/img-store/filestore/b2"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
