@@ -20,12 +20,6 @@
   version = "v1.4.0"
 
 [[projects]]
-  branch = "master"
-  name = "github.com/jmoiron/sqlx"
-  packages = [".","reflectx"]
-  revision = "d9bd385d68c068f1fabb5057e3dedcbcbb039d0f"
-
-[[projects]]
   name = "github.com/joho/godotenv"
   packages = ["."]
   revision = "726cc8b906e3d31c70a9671c90a13716a8d3f50d"
@@ -67,15 +61,9 @@
   packages = ["context"]
   revision = "f5079bd7f6f74e23c4d65efa0f4ce14cbd6a3c0f"
 
-[[projects]]
-  branch = "master"
-  name = "golang.org/x/sync"
-  packages = ["syncmap"]
-  revision = "f52d1811a62927559de87708c8913c1650ce4f26"
-
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "a4adc5fa304b8ccbe747a4e970e7e594525ded5bb67991bcc9928cfdebdd2fa4"
+  inputs-digest = "a147453609b0c29ddf5fcf73d3534f14710d4f91133efc3a87a9fa4c584961da"
   solver-name = "gps-cdcl"
   solver-version = 1

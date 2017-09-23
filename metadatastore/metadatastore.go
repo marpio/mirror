@@ -13,13 +13,13 @@ type DataStore interface {
 
 type DataStoreWriter interface {
 	Add(photo *photo.Photo) error
-	Delete(imgID string) error
+	Delete(path string) error
 	Commit() error
 }
 
 type DataStoreReader interface {
 	GetAll() ([]*photo.Photo, error)
-	GetByID(imgID string) ([]*photo.Photo, error)
+	GetByPath(path string) ([]*photo.Photo, error)
 	GetByMonth(month time.Time) ([]*photo.Photo, error)
 	GetMonths() ([]time.Time, error)
 }

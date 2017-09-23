@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"image/jpeg"
 	"io"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"time"
@@ -96,5 +97,5 @@ func findNeighborImgCreatedAt(dir string, path string) (time.Time, bool) {
 			return imgCreatedAt, true
 		}
 	}
-	return time.Time{}, false
+	return time.Time{}.Add(time.Millisecond * time.Duration(rand.Intn(1000000))), false
 }

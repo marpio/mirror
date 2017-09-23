@@ -33,14 +33,19 @@ func NewSyncronizer(fileStore filestore.FileStore,
 	photosFinder func(string, func(id string, modTime time.Time) bool) []*file.FileInfo,
 	extractCreatedAt func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error),
 	extractThumbnail func(r io.ReadSeeker) ([]byte, error)) *Syncronizer {
+
 	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, photosFinder: photosFinder, extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumbnail}
 }
 
 func (s *Syncronizer) Sync(rootPath string) error {
 	log.Print("Syncing...")
-	newOrChanged := s.photosFinder(rootPath, isPhotoUnchangedFn(s.metadataStore))
+	isUnchanged := func(id string, modTime time.Time) bool {
+		existing, _ := s.metadataStore.GetByPath(id)
+		return (len(existing) == 1 && existing[0].ModTime == modTime)
+	}
+	newOrChanged := s.photosFinder(rootPath, isUnchanged)
 	for _, p := range newOrChanged {
-		s.metadataStore.Delete(p.PathHash)
+		s.metadataStore.Delete(p.Path)
 	}
 
 	metadataStream := s.extractMetadata(groupByDir(newOrChanged))
@@ -52,17 +57,6 @@ func (s *Syncronizer) Sync(rootPath string) error {
 		log.Printf("Error commiting to DB %v", err)
 	}
 	log.Println("Sync compleated.")
-	return nil
-}
-
-func (s *Syncronizer) UploadMetadataStore(imgDBpath string) error {
-	dbFileReader, err := s.fileReader(imgDBpath)
-	if err != nil {
-		return err
-	}
-	if err := s.fileStore.UploadEncrypted(imgDBpath, dbFileReader); err != nil {
-		return err
-	}
 	return nil
 }
 
@@ -117,7 +111,7 @@ func (s *Syncronizer) extractMetadataForDir(dir string, photos []*file.FileInfo,
 
 func isPhotoUnchangedFn(store metadatastore.DataStoreReader) func(id string, modTime time.Time) bool {
 	return func(id string, modTime time.Time) bool {
-		existing, _ := store.GetByID(id)
+		existing, _ := store.GetByPath(id)
 		return (len(existing) == 1 && existing[0].ModTime == modTime)
 	}
 }

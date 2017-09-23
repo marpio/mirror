@@ -33,17 +33,16 @@ func main() {
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
-	dbFileName := os.Getenv("IMG_DB")
-	imgDBPath := dbFileName
+	dbPath := os.Getenv("IMG_DB")
 	ctx := context.Background()
 	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
-	metadataStore, err := createMetadataStore(imgDBPath, fileStore)
+	metadataStore, err := createMetadataStore(dbPath, fileStore)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	router := configureRouter(metadataStore, fileStore, encryptionKey, imgDBPath)
+	router := configureRouter(metadataStore, fileStore, encryptionKey, dbPath)
 
 	http.ListenAndServe(":5000", router)
 }

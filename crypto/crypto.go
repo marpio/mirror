@@ -2,8 +2,6 @@ package crypto
 
 import (
 	"crypto/rand"
-	"crypto/sha1"
-	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -13,15 +11,6 @@ import (
 )
 
 const dataChunkSize = 64 * 1024
-
-func CalculateHash(r io.Reader) (string, error) {
-	h := sha1.New()
-	if _, err := io.Copy(h, r); err != nil {
-		return "", err
-	}
-	hash := base64.StdEncoding.EncodeToString(h.Sum(nil))
-	return hash, nil
-}
 
 func Encrypt(dst io.Writer, encryptionKey string, dataReader io.Reader) error {
 	secretKeyBytes, err := hex.DecodeString(encryptionKey)

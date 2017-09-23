@@ -16,7 +16,6 @@ import (
 	"github.com/joho/godotenv"
 	"github.com/marpio/img-store/filestore/b2"
 	"github.com/marpio/img-store/syncronizer"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
@@ -30,8 +29,7 @@ func main() {
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
-	dbFileName := os.Getenv("IMG_DB")
-	dbPath := dbFileName
+	dbPath := os.Getenv("IMG_DB")
 	ctx := context.Background()
 
 	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
@@ -52,7 +50,12 @@ func main() {
 			metadata.ExtractCreatedAt,
 			metadata.ExtractThumbnail)
 		syncronizer.Sync(*dir)
-		if err := syncronizer.UploadMetadataStore(dbPath); err != nil {
+
+		dbFileReader, err := file.ReadFile(dbPath)
+		if err != nil {
+			log.Print("Error uploading DB")
+		}
+		if err := fileStore.UploadEncrypted(dbPath, dbFileReader); err != nil {
 			log.Print("Error uploading DB")
 		}
 	}

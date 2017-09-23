@@ -69,16 +69,16 @@ func (datastore *HashmapMetadataStore) GetByMonth(month time.Time) ([]*photo.Pho
 	return res, nil
 }
 
-func (datastore *HashmapMetadataStore) GetByID(id string) ([]*photo.Photo, error) {
+func (datastore *HashmapMetadataStore) GetByPath(path string) ([]*photo.Photo, error) {
 	res := make([]*photo.Photo, 0)
-	if p, ok := datastore.data[id]; ok {
+	if p, ok := datastore.data[path]; ok {
 		res = append(res, p)
 	}
 	return res, nil
 }
 
 func (datastore *HashmapMetadataStore) Add(photo *photo.Photo) error {
-	datastore.data[photo.PathHash] = photo
+	datastore.data[photo.Path] = photo
 	return nil
 }
 
@@ -111,6 +111,6 @@ func (datastore *HashmapMetadataStore) GetMonths() ([]time.Time, error) {
 			months = append(months, p.CreatedAtMonth)
 		}
 	}
-	sort.Sort(timeSlice(months))
+	sort.Sort(sort.Reverse(timeSlice(months)))
 	return months, nil
 }
