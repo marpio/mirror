@@ -13,7 +13,6 @@ import (
 	"github.com/marpio/img-store/file"
 	"github.com/marpio/img-store/filestore"
 
-	"github.com/joho/godotenv"
 	"github.com/marpio/img-store/filestore/b2"
 	"github.com/marpio/img-store/syncronizer"
 )
@@ -22,9 +21,6 @@ func main() {
 	f := initLog()
 	defer f.Close()
 
-	if err := godotenv.Load("../../settings.env"); err != nil {
-		log.Fatal("Error loading .env file")
-	}
 	encryptionKey := os.Getenv("ENCR_KEY")
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")

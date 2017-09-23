@@ -20,14 +20,10 @@ import (
 	"github.com/marpio/img-store/photo"
 
 	"github.com/gorilla/mux"
-	"github.com/joho/godotenv"
 	"github.com/marpio/img-store/filestore/b2"
 )
 
 func main() {
-	if err := godotenv.Load("../../settings.env"); err != nil {
-		log.Fatal("Error loading .env file")
-	}
 	encryptionKey := os.Getenv("ENCR_KEY")
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
