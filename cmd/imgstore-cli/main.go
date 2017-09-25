@@ -7,6 +7,8 @@ import (
 	"log"
 	"os"
 
+	"github.com/spf13/afero"
+
 	"github.com/marpio/img-store/metadata"
 	"github.com/marpio/img-store/metadatastore/hashmap"
 
@@ -31,7 +33,9 @@ func main() {
 	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
 
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
-	metadataStore := hashmap.NewHashmapMetadataStore(dbPath)
+
+	appFs := afero.NewOsFs()
+	metadataStore := hashmap.NewHashmapMetadataStore(appFs, dbPath)
 
 	dir := flag.String("sync", "", "Abs path to the directory containing pictures")
 	downloadsrc := flag.String("src", "", "File to ....")
@@ -39,15 +43,16 @@ func main() {
 	flag.Parse()
 
 	if *dir != "" {
+		readFileFn := file.FileReader(appFs)
 		syncronizer := syncronizer.NewSyncronizer(fileStore,
 			metadataStore,
-			file.ReadFile,
-			file.FindPhotos,
-			metadata.ExtractCreatedAt,
+			readFileFn,
+			file.PhotosFinder(appFs),
+			metadata.CreatedAtExtractor(appFs),
 			metadata.ExtractThumbnail)
 		syncronizer.Sync(*dir)
 
-		dbFileReader, err := file.ReadFile(dbPath)
+		dbFileReader, err := readFileFn(dbPath)
 		if err != nil {
 			log.Print("Error uploading DB")
 		}
@@ -63,7 +68,6 @@ func main() {
 		}
 		fileStore.DownloadDecrypted(f, *downloadsrc)
 	}
-
 }
 
 func initLog() io.Closer {

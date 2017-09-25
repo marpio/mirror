@@ -2,43 +2,28 @@ package hashmap
 
 import (
 	"encoding/gob"
-	"os"
 	"sort"
 	"time"
 
 	"github.com/marpio/img-store/photo"
+	"github.com/spf13/afero"
 )
+
+type HashmapMetadataStore struct {
+	fs         afero.Fs
+	data       map[string]*photo.Photo
+	dbFilePath string
+}
 
 type timeSlice []time.Time
 
-// Forward request for length
-func (p timeSlice) Len() int {
-	return len(p)
-}
-
-// Define compare
-func (p timeSlice) Less(i, j int) bool {
-	return p[i].Before(p[j])
-}
-
-// Define swap over an array
-func (p timeSlice) Swap(i, j int) {
-	p[i], p[j] = p[j], p[i]
-}
-
-type HashmapMetadataStore struct {
-	data map[string]*photo.Photo
-}
-
-var dbName string
-
-func NewHashmapMetadataStore(dbFileName string) *HashmapMetadataStore {
-	dbName = dbFileName
+func NewHashmapMetadataStore(fs afero.Fs, dbFilePath string) *HashmapMetadataStore {
 	var decodedMetadata map[string]*photo.Photo
-	if _, err := os.Stat(dbName); os.IsNotExist(err) {
+	exists, err := afero.Exists(fs, dbFilePath)
+	if err != nil || !exists {
 		decodedMetadata = make(map[string]*photo.Photo)
 	} else {
-		f, err := os.Open(dbName)
+		f, err := fs.Open(dbFilePath)
 		if err != nil {
 			return nil
 		}
@@ -48,7 +33,24 @@ func NewHashmapMetadataStore(dbFileName string) *HashmapMetadataStore {
 			decodedMetadata = make(map[string]*photo.Photo)
 		}
 	}
-	return &HashmapMetadataStore{data: decodedMetadata}
+	return &HashmapMetadataStore{fs: fs, data: decodedMetadata, dbFilePath: dbFilePath}
+}
+
+func (datastore *HashmapMetadataStore) Reload() error {
+	var decodedMetadata map[string]*photo.Photo
+	f, err := datastore.fs.Open(datastore.dbFilePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	dec := gob.NewDecoder(f)
+	if err := dec.Decode(&decodedMetadata); err != nil {
+		datastore.data = make(map[string]*photo.Photo)
+		return err
+	} else {
+		datastore.data = decodedMetadata
+		return nil
+	}
 }
 
 func (datastore *HashmapMetadataStore) GetAll() (all []*photo.Photo, err error) {
@@ -83,7 +85,7 @@ func (datastore *HashmapMetadataStore) Add(photo *photo.Photo) error {
 }
 
 func (datastore *HashmapMetadataStore) Commit() error {
-	f, err := os.Create(dbName)
+	f, err := datastore.fs.Create(datastore.dbFilePath)
 	if err != nil {
 		return err
 	}
@@ -113,4 +115,19 @@ func (datastore *HashmapMetadataStore) GetMonths() ([]time.Time, error) {
 	}
 	sort.Sort(sort.Reverse(timeSlice(months)))
 	return months, nil
+}
+
+// Forward request for length
+func (p timeSlice) Len() int {
+	return len(p)
+}
+
+// Define compare
+func (p timeSlice) Less(i, j int) bool {
+	return p[i].Before(p[j])
+}
+
+// Define swap over an array
+func (p timeSlice) Swap(i, j int) {
+	p[i], p[j] = p[j], p[i]
 }

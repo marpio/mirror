@@ -1,0 +1,21 @@
+version: '3'
+services:
+  web:
+    environment:
+      - B2_BUCKET_NAME
+      - B2_ACCOUNT_ID
+      - B2_ACCOUNT_KEY
+      - ENCR_KEY
+      - IMG_DB
+    build: .
+    expose:
+      - "5000"
+    links:
+      - lb
+  lb:
+    image: joshix/caddy:latest
+    ports:
+      -   "5000:5000"
+    volumes:
+      - ./Caddyfile.dev:/var/www/html/Caddyfile
+      - ./.caddy:/.caddy

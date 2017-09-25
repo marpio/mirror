@@ -6,33 +6,19 @@ import (
 	"image/jpeg"
 	"io"
 	"math/rand"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/marpio/img-store/file"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
+	"github.com/spf13/afero"
 )
 
-func ExtractCreatedAt(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
-	x, err := exif.Decode(r)
-	if err != nil {
-		return time.Time{}, err
+func CreatedAtExtractor(fs afero.Fs) func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
+	return func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
+		return extractCreatedAt(fs, dir, path, r, dirCreatedAt)
 	}
-	imgCreatedAt, err := x.DateTime()
-	if err != nil {
-		if (dirCreatedAt != time.Time{}) {
-			return dirCreatedAt, nil
-		}
-
-		imgCreatedAt, found := findNeighborImgCreatedAt(dir, path)
-		if !found {
-			return time.Time{}, nil
-		}
-		return imgCreatedAt, nil
-	}
-	return imgCreatedAt, nil
 }
 
 func ExtractThumbnail(r io.ReadSeeker) ([]byte, error) {
@@ -49,6 +35,26 @@ func ExtractThumbnail(r io.ReadSeeker) ([]byte, error) {
 		}
 	}
 	return thumbnail, nil
+}
+
+func extractCreatedAt(fs afero.Fs, dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
+	x, err := exif.Decode(r)
+	if err != nil {
+		return time.Time{}, err
+	}
+	imgCreatedAt, err := x.DateTime()
+	if err != nil {
+		if (dirCreatedAt != time.Time{}) {
+			return dirCreatedAt, nil
+		}
+
+		imgCreatedAt, found := findNeighborImgCreatedAt(fs, dir, path)
+		if !found {
+			return time.Time{}, nil
+		}
+		return imgCreatedAt, nil
+	}
+	return imgCreatedAt, nil
 }
 
 func resizeImg(r io.ReadSeeker) ([]byte, error) {
@@ -69,15 +75,15 @@ func resizeImg(r io.ReadSeeker) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func findNeighborImgCreatedAt(dir string, path string) (time.Time, bool) {
+func findNeighborImgCreatedAt(fs afero.Fs, dir string, path string) (time.Time, bool) {
 	var imgCreatedAt = time.Time{}
-	matches, _ := filepath.Glob(filepath.Join(dir, "*.jpg"))
+	matches, _ := afero.Glob(fs, filepath.Join(dir, "*.jpg"))
 	for _, imgfile := range matches {
 		if imgfile == path {
 			continue
 		}
 		imgCreatedAt = func(f string) time.Time {
-			reader, err := os.Open(f)
+			reader, err := fs.Open(f)
 			if err != nil {
 				return time.Time{}
 			}

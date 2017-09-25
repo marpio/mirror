@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"io"
 	"log"
-	"path"
 	"path/filepath"
-	"strconv"
 	"sync"
 	"time"
 
@@ -43,7 +41,9 @@ func (s *Syncronizer) Sync(rootPath string) error {
 		existing, _ := s.metadataStore.GetByPath(id)
 		return (len(existing) == 1 && existing[0].ModTime == modTime)
 	}
+
 	newOrChanged := s.photosFinder(rootPath, isUnchanged)
+	log.Print(len(newOrChanged))
 	for _, p := range newOrChanged {
 		s.metadataStore.Delete(p.Path)
 	}
@@ -100,36 +100,13 @@ func (s *Syncronizer) extractMetadataForDir(dir string, photos []*file.FileInfo,
 				log.Printf("Can't extract thumbnail: %v", err)
 				return
 			}
-			thumbnailName := generateUniqueFileName("thumb", p.Path, createdAt)
-			imgName := generateUniqueFileName("orig", p.Path, createdAt)
+			thumbnailName := file.GenerateUniqueFileName("thumb", p.Path, createdAt)
+			imgName := file.GenerateUniqueFileName("orig", p.Path, createdAt)
 			res := &photo.FileWithMetadata{FileInfo: p, Thumbnail: thumb, Metadata: &photo.Metadata{Name: imgName, ThumbnailName: thumbnailName, CreatedAt: createdAt, CreatedAtMonth: createdAtMonth}}
 			dirCreatedAt = createdAt
 			metadataStream <- res
 		}(ph)
 	}
-}
-
-func isPhotoUnchangedFn(store metadatastore.DataStoreReader) func(id string, modTime time.Time) bool {
-	return func(id string, modTime time.Time) bool {
-		existing, _ := store.GetByPath(id)
-		return (len(existing) == 1 && existing[0].ModTime == modTime)
-	}
-}
-
-func groupByDir(photos []*file.FileInfo) map[string][]*file.FileInfo {
-	photosGroupedByDir := make(map[string][]*file.FileInfo)
-	for _, p := range photos {
-		dir := filepath.Dir(p.Path)
-		if v, ok := photosGroupedByDir[dir]; ok {
-			v = append(v, p)
-			photosGroupedByDir[dir] = v
-		} else {
-			ps := make([]*file.FileInfo, 0)
-			ps = append(ps, p)
-			photosGroupedByDir[dir] = ps
-		}
-	}
-	return photosGroupedByDir
 }
 
 func (s *Syncronizer) uploadPhotos(metadataStream <-chan *photo.FileWithMetadata) <-chan *photo.Photo {
@@ -181,8 +158,25 @@ func (s *Syncronizer) uploadPhoto(img *photo.FileWithMetadata) (*photo.Photo, er
 	return p, nil
 }
 
-func generateUniqueFileName(prefix string, imgPath string, imgCreatedAt time.Time) string {
-	nano := strconv.FormatInt(imgCreatedAt.UnixNano(), 10)
-	imgFileName := prefix + "_" + nano + "_" + path.Base(imgPath)
-	return imgFileName
+func isPhotoUnchangedFn(store metadatastore.DataStoreReader) func(id string, modTime time.Time) bool {
+	return func(id string, modTime time.Time) bool {
+		existing, _ := store.GetByPath(id)
+		return (len(existing) == 1 && existing[0].ModTime == modTime)
+	}
+}
+
+func groupByDir(photos []*file.FileInfo) map[string][]*file.FileInfo {
+	photosGroupedByDir := make(map[string][]*file.FileInfo)
+	for _, p := range photos {
+		dir := filepath.Dir(p.Path)
+		if v, ok := photosGroupedByDir[dir]; ok {
+			v = append(v, p)
+			photosGroupedByDir[dir] = v
+		} else {
+			ps := make([]*file.FileInfo, 0)
+			ps = append(ps, p)
+			photosGroupedByDir[dir] = ps
+		}
+	}
+	return photosGroupedByDir
 }

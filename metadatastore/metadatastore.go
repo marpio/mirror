@@ -22,4 +22,5 @@ type DataStoreReader interface {
 	GetByPath(path string) ([]*photo.Photo, error)
 	GetByMonth(month time.Time) ([]*photo.Photo, error)
 	GetMonths() ([]time.Time, error)
+	Reload() error
 }

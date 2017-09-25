@@ -4,13 +4,16 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
+	"path"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/spf13/afero"
 )
 
 type File interface {
-	io.ReadWriteCloser
+	io.ReadCloser
 	io.Seeker
 }
 
@@ -19,17 +22,42 @@ type FileInfo struct {
 	ModTime time.Time
 }
 
-func FindPhotos(rootPath string, isUnchangedFn func(string, time.Time) bool) (newOrChanged []*FileInfo) {
+func PhotosFinder(fs afero.Fs) func(rootPath string, isUnchangedFn func(string, time.Time) bool) (newOrChanged []*FileInfo) {
+	return func(rootPath string, isUnchangedFn func(string, time.Time) bool) (newOrChanged []*FileInfo) {
+		return findPhotos(fs, rootPath, isUnchangedFn)
+	}
+}
+
+func FileReader(fs afero.Fs) func(path string) (File, error) {
+	return func(path string) (File, error) {
+		return readFile(fs, path)
+	}
+}
+
+func GenerateUniqueFileName(prefix string, fpath string, createdAt time.Time) string {
+	nano := strconv.FormatInt(createdAt.UnixNano(), 10)
+	imgFileName := prefix + "_" + nano + "_" + path.Base(fpath)
+	return imgFileName
+}
+
+func findPhotos(fs afero.Fs, rootPath string, isUnchangedFn func(string, time.Time) bool) (newOrChanged []*FileInfo) {
 	newOrChanged = make([]*FileInfo, 0)
 
-	err := filepath.Walk(rootPath, func(path string, fi os.FileInfo, err error) error {
+	err := afero.Walk(fs, rootPath, func(path string, fi os.FileInfo, err error) error {
+
 		if err != nil {
 			log.Printf("Error while walking the directory structure: %v", err.Error())
 		}
-		isJpeg := !fi.IsDir() && (strings.HasSuffix(strings.ToLower(fi.Name()), ".jpg") || strings.HasSuffix(strings.ToLower(fi.Name()), ".jpeg"))
+		isDir, err := afero.IsDir(fs, path)
+
+		if err != nil {
+			return err
+		}
+		isJpeg := !isDir && (strings.HasSuffix(strings.ToLower(fi.Name()), ".jpg") || strings.HasSuffix(strings.ToLower(fi.Name()), ".jpeg"))
 		if isJpeg {
 			modTime := fi.ModTime()
 			finf := &FileInfo{Path: path, ModTime: fi.ModTime()}
+
 			if !isUnchangedFn(path, modTime) {
 				newOrChanged = append(newOrChanged, finf)
 			}
@@ -42,6 +70,6 @@ func FindPhotos(rootPath string, isUnchangedFn func(string, time.Time) bool) (ne
 	return newOrChanged
 }
 
-func ReadFile(filename string) (File, error) {
-	return os.Open(filename)
+func readFile(fs afero.Fs, filePath string) (File, error) {
+	return fs.Open(filePath)
 }

@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/spf13/afero"
 	"github.com/aymerick/raymond"
 	"github.com/marpio/img-store/filestore"
 	"github.com/marpio/img-store/metadatastore"
@@ -32,7 +33,8 @@ func main() {
 	ctx := context.Background()
 	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
-	metadataStore, err := createMetadataStore(dbPath, fileStore)
+	var appFs afero.Fs = afero.NewOsFs()
+	metadataStore, err := createMetadataStore(appFs, dbPath, fileStore)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -48,8 +50,7 @@ func configureRouter(metadataStore metadatastore.DataStoreReader, fileStore file
 	r.HandleFunc("/images/year/{year}/month/{month}", monthImgsHandler(metadataStore))
 	r.HandleFunc("/files/{name}", fileHandler(fileStore))
 	r.HandleFunc("/reloaddb", func(w http.ResponseWriter, r *http.Request) {
-		var err error
-		metadataStore, err = createMetadataStore(imgDBPath, fileStore)
+		err := metadataStore.Reload()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -60,8 +61,8 @@ func configureRouter(metadataStore metadatastore.DataStoreReader, fileStore file
 	return r
 }
 
-func createMetadataStore(imgDBPath string, fileStore filestore.FileStoreReader) (metadatastore.DataStore, error) {
-	f, err := os.Create(filepath.Base(imgDBPath))
+func createMetadataStore(fs afero.Fs, imgDBPath string, fileStore filestore.FileStoreReader) (metadatastore.DataStore, error) {
+	f, err := fs.Create(filepath.Base(imgDBPath))
 
 	if err != nil {
 		log.Print(err)
@@ -73,7 +74,7 @@ func createMetadataStore(imgDBPath string, fileStore filestore.FileStoreReader) 
 		return nil, err
 	}
 
-	metadataStore := hashmap.NewHashmapMetadataStore(imgDBPath)
+	metadataStore := hashmap.NewHashmapMetadataStore(fs, imgDBPath)
 	return metadataStore, nil
 }
 

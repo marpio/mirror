@@ -39,6 +39,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/spf13/afero"
+  packages = [".","mem"]
+  revision = "ee1bd8ee15a1306d1f9201acc41ef39cd9f99a1b"
+
+[[projects]]
+  branch = "master"
   name = "golang.org/x/crypto"
   packages = ["nacl/secretbox","poly1305","salsa20/salsa"]
   revision = "558b6879de74bc843225cde5686419267ff707ca"
@@ -49,9 +55,15 @@
   packages = ["context"]
   revision = "f5079bd7f6f74e23c4d65efa0f4ce14cbd6a3c0f"
 
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/text"
+  packages = ["internal/gen","internal/triegen","internal/ucd","transform","unicode/cldr","unicode/norm"]
+  revision = "1cbadb444a806fd9430d14ad08967ed91da4fa0a"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2f08731a2701ec20f6d4dc640a176ea93031a9498e56199c2ad1642f00aa8fef"
+  inputs-digest = "3b9ef111ffd2ccf5b3d3a61fa663efff2fe2262476382f65e4370020cc580954"
   solver-name = "gps-cdcl"
   solver-version = 1
