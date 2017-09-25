@@ -45,7 +45,6 @@ func (b *BackendStore) DownloadDecrypted(dst io.Writer, fileName string) {
 }
 
 func (b *BackendStore) UploadEncrypted(fileName string, reader io.Reader) error {
-	log.Printf("Uploading file: %v", fileName)
 	w := b.writeFn(fileName)
 	crypto.Encrypt(w, b.encryptionKey, reader)
 	if err := w.Close(); err != nil {

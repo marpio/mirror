@@ -60,10 +60,11 @@ func (s *Syncronizer) Sync(rootPath string, done <-chan os.Signal) {
 				photosStream = nil
 			}
 		case sig := <-done:
+			log.Printf("Sync interrupted. Sig: %v", sig)
+			log.Print("Commiting DB.")
 			if err := s.metadataStore.Commit(); err != nil {
 				log.Printf("Error commiting to DB %v", err)
 			}
-			log.Printf("Sync interrupted. Sig: %v", sig)
 			return
 		}
 		if photosStream == nil {
@@ -172,11 +173,4 @@ func (s *Syncronizer) uploadPhoto(img *photo.FileWithMetadata) (*photo.Photo, er
 	p := &photo.Photo{FileInfo: img.FileInfo, Metadata: img.Metadata}
 
 	return p, nil
-}
-
-func isPhotoUnchangedFn(store metadatastore.DataStoreReader) func(id string, modTime time.Time) bool {
-	return func(id string, modTime time.Time) bool {
-		existing, _ := store.GetByPath(id)
-		return (len(existing) == 1 && existing[0].ModTime == modTime)
-	}
 }
