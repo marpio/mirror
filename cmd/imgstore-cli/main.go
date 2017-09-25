@@ -6,6 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/spf13/afero"
 
@@ -35,7 +37,7 @@ func main() {
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
 
 	appFs := afero.NewOsFs()
-	metadataStore := hashmap.NewHashmapMetadataStore(appFs, dbPath)
+	metadataStore := hashmap.NewMetadataStore(appFs, dbPath)
 
 	dir := flag.String("sync", "", "Abs path to the directory containing pictures")
 	downloadsrc := flag.String("src", "", "File to ....")
@@ -43,6 +45,9 @@ func main() {
 	flag.Parse()
 
 	if *dir != "" {
+		sigs := make(chan os.Signal, 1)
+		signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+
 		readFileFn := file.FileReader(appFs)
 		syncronizer := syncronizer.NewSyncronizer(fileStore,
 			metadataStore,
@@ -50,7 +55,7 @@ func main() {
 			file.PhotosFinder(appFs),
 			metadata.CreatedAtExtractor(appFs),
 			metadata.ExtractThumbnail)
-		syncronizer.Sync(*dir)
+		syncronizer.Sync(*dir, sigs)
 
 		dbFileReader, err := readFileFn(dbPath)
 		if err != nil {

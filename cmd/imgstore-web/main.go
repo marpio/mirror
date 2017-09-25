@@ -13,12 +13,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/spf13/afero"
 	"github.com/aymerick/raymond"
 	"github.com/marpio/img-store/filestore"
 	"github.com/marpio/img-store/metadatastore"
 	"github.com/marpio/img-store/metadatastore/hashmap"
 	"github.com/marpio/img-store/photo"
+	"github.com/spf13/afero"
 
 	"github.com/gorilla/mux"
 	"github.com/marpio/img-store/filestore/b2"
@@ -74,7 +74,7 @@ func createMetadataStore(fs afero.Fs, imgDBPath string, fileStore filestore.File
 		return nil, err
 	}
 
-	metadataStore := hashmap.NewHashmapMetadataStore(fs, imgDBPath)
+	metadataStore := hashmap.NewMetadataStore(fs, imgDBPath)
 	return metadataStore, nil
 }
 

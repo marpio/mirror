@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"io"
 	"log"
-	"path/filepath"
+	"os"
 	"sync"
 	"time"
 
@@ -35,7 +35,7 @@ func NewSyncronizer(fileStore filestore.FileStore,
 	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, photosFinder: photosFinder, extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumbnail}
 }
 
-func (s *Syncronizer) Sync(rootPath string) error {
+func (s *Syncronizer) Sync(rootPath string, done <-chan os.Signal) {
 	log.Print("Syncing...")
 	isUnchanged := func(id string, modTime time.Time) bool {
 		existing, _ := s.metadataStore.GetByPath(id)
@@ -48,16 +48,32 @@ func (s *Syncronizer) Sync(rootPath string) error {
 		s.metadataStore.Delete(p.Path)
 	}
 
-	metadataStream := s.extractMetadata(groupByDir(newOrChanged))
+	metadataStream := s.extractMetadata(file.GroupByDir(newOrChanged))
 	photosStream := s.uploadPhotos(metadataStream)
-	for u := range photosStream {
-		s.metadataStore.Add(u)
+
+	for {
+		select {
+		case p, more := <-photosStream:
+			if more {
+				s.metadataStore.Add(p)
+			} else {
+				photosStream = nil
+			}
+		case sig := <-done:
+			if err := s.metadataStore.Commit(); err != nil {
+				log.Printf("Error commiting to DB %v", err)
+			}
+			log.Printf("Sync interrupted. Sig: %v", sig)
+			return
+		}
+		if photosStream == nil {
+			break
+		}
 	}
 	if err := s.metadataStore.Commit(); err != nil {
 		log.Printf("Error commiting to DB %v", err)
 	}
 	log.Println("Sync compleated.")
-	return nil
 }
 
 func (s *Syncronizer) extractMetadata(pathsGroupedByDir map[string][]*file.FileInfo) <-chan *photo.FileWithMetadata {
@@ -163,20 +179,4 @@ func isPhotoUnchangedFn(store metadatastore.DataStoreReader) func(id string, mod
 		existing, _ := store.GetByPath(id)
 		return (len(existing) == 1 && existing[0].ModTime == modTime)
 	}
-}
-
-func groupByDir(photos []*file.FileInfo) map[string][]*file.FileInfo {
-	photosGroupedByDir := make(map[string][]*file.FileInfo)
-	for _, p := range photos {
-		dir := filepath.Dir(p.Path)
-		if v, ok := photosGroupedByDir[dir]; ok {
-			v = append(v, p)
-			photosGroupedByDir[dir] = v
-		} else {
-			ps := make([]*file.FileInfo, 0)
-			ps = append(ps, p)
-			photosGroupedByDir[dir] = ps
-		}
-	}
-	return photosGroupedByDir
 }

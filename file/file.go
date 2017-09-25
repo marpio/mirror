@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -38,6 +39,22 @@ func GenerateUniqueFileName(prefix string, fpath string, createdAt time.Time) st
 	nano := strconv.FormatInt(createdAt.UnixNano(), 10)
 	imgFileName := prefix + "_" + nano + "_" + path.Base(fpath)
 	return imgFileName
+}
+
+func GroupByDir(photos []*FileInfo) map[string][]*FileInfo {
+	photosGroupedByDir := make(map[string][]*FileInfo)
+	for _, p := range photos {
+		dir := filepath.Dir(p.Path)
+		if v, ok := photosGroupedByDir[dir]; ok {
+			v = append(v, p)
+			photosGroupedByDir[dir] = v
+		} else {
+			ps := make([]*FileInfo, 0)
+			ps = append(ps, p)
+			photosGroupedByDir[dir] = ps
+		}
+	}
+	return photosGroupedByDir
 }
 
 func findPhotos(fs afero.Fs, rootPath string, isUnchangedFn func(string, time.Time) bool) (newOrChanged []*FileInfo) {

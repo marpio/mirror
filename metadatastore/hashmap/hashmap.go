@@ -17,7 +17,7 @@ type HashmapMetadataStore struct {
 
 type timeSlice []time.Time
 
-func NewHashmapMetadataStore(fs afero.Fs, dbFilePath string) *HashmapMetadataStore {
+func NewMetadataStore(fs afero.Fs, dbFilePath string) *HashmapMetadataStore {
 	var decodedMetadata map[string]*photo.Photo
 	exists, err := afero.Exists(fs, dbFilePath)
 	if err != nil || !exists {
