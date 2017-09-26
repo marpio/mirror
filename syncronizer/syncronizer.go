@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"log"
-	"os"
 	"sync"
 	"time"
 
@@ -35,15 +34,14 @@ func NewSyncronizer(fileStore filestore.FileStore,
 	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, photosFinder: photosFinder, extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumbnail}
 }
 
-func (s *Syncronizer) Sync(rootPath string, done <-chan os.Signal) {
-	log.Print("Syncing...")
+func (s *Syncronizer) Sync(rootPath string, done <-chan interface{}) {
+	log.Print("Starting sync")
 	isUnchanged := func(id string, modTime time.Time) bool {
 		existing, _ := s.metadataStore.GetByPath(id)
 		return (len(existing) == 1 && existing[0].ModTime == modTime)
 	}
 
 	newOrChanged := s.photosFinder(rootPath, isUnchanged)
-	log.Print(len(newOrChanged))
 	for _, p := range newOrChanged {
 		s.metadataStore.Delete(p.Path)
 	}
@@ -57,24 +55,20 @@ func (s *Syncronizer) Sync(rootPath string, done <-chan os.Signal) {
 			if more {
 				s.metadataStore.Add(p)
 			} else {
-				photosStream = nil
+				log.Print("Sync end")
+				if err := s.metadataStore.Persist(); err != nil {
+					log.Printf("Error commiting to DB %v", err)
+				}
+				return
 			}
-		case sig := <-done:
-			log.Printf("Sync interrupted. Sig: %v", sig)
-			log.Print("Commiting DB.")
-			if err := s.metadataStore.Commit(); err != nil {
+		case <-done:
+			log.Print("Sync interrupted")
+			if err := s.metadataStore.Persist(); err != nil {
 				log.Printf("Error commiting to DB %v", err)
 			}
 			return
 		}
-		if photosStream == nil {
-			break
-		}
 	}
-	if err := s.metadataStore.Commit(); err != nil {
-		log.Printf("Error commiting to DB %v", err)
-	}
-	log.Println("Sync compleated.")
 }
 
 func (s *Syncronizer) extractMetadata(pathsGroupedByDir map[string][]*file.FileInfo) <-chan *photo.FileWithMetadata {
@@ -86,7 +80,7 @@ func (s *Syncronizer) extractMetadata(pathsGroupedByDir map[string][]*file.FileI
 		for dir, paths := range pathsGroupedByDir {
 			go func(directory string, ps []*file.FileInfo) {
 				defer wg.Done()
-				s.extractMetadataForDir(directory, ps, metadataStream)
+				s.extractMetadataDir(directory, ps, metadataStream)
 			}(dir, paths)
 		}
 		wg.Wait()
@@ -94,7 +88,7 @@ func (s *Syncronizer) extractMetadata(pathsGroupedByDir map[string][]*file.FileI
 	return metadataStream
 }
 
-func (s *Syncronizer) extractMetadataForDir(dir string, photos []*file.FileInfo, metadataStream chan<- *photo.FileWithMetadata) {
+func (s *Syncronizer) extractMetadataDir(dir string, photos []*file.FileInfo, metadataStream chan<- *photo.FileWithMetadata) {
 	dirCreatedAt := time.Time{}
 	for _, ph := range photos {
 		func(p *file.FileInfo) {
@@ -130,18 +124,17 @@ func (s *Syncronizer) uploadPhotos(metadataStream <-chan *photo.FileWithMetadata
 	uploadedPhotosStream := make(chan *photo.Photo)
 
 	go func() {
-		limiter := make(chan bool, maxConcurrentUploads)
+		limiter := make(chan struct{}, maxConcurrentUploads)
 		var wg sync.WaitGroup
 		defer close(uploadedPhotosStream)
 		for metaData := range metadataStream {
-			limiter <- true
+			limiter <- struct{}{}
 			wg.Add(1)
 			go func(m *photo.FileWithMetadata) {
 				defer wg.Done()
 				defer func() { <-limiter }()
 				p, err := s.uploadPhoto(m)
 				if err != nil {
-					log.Printf("Error uploading file: %v - err: %v", m.Path, err)
 					return
 				}
 				uploadedPhotosStream <- p
@@ -161,12 +154,12 @@ func (s *Syncronizer) uploadPhoto(img *photo.FileWithMetadata) (*photo.Photo, er
 	defer f.Close()
 
 	if err := s.fileStore.UploadEncrypted(img.ThumbnailName, bytes.NewReader(img.Thumbnail)); err != nil {
-		log.Printf("Error uploading : %v - img: %v", err, img.Path)
+		log.Printf("Error uploading thumbnail: %v - path: %v", img.ThumbnailName, img.Path)
 		return nil, err
 	}
 
 	if err := s.fileStore.UploadEncrypted(img.Name, f); err != nil {
-		log.Printf("Error uploading: %v - img: %v", err, img.Path)
+		log.Printf("Error uploading photo: %v - img: %v", img.Name, img.Path)
 		return nil, err
 	}
 

@@ -14,7 +14,7 @@ type DataStore interface {
 type DataStoreWriter interface {
 	Add(photo *photo.Photo) error
 	Delete(path string) error
-	Commit() error
+	Persist() error
 }
 
 type DataStoreReader interface {

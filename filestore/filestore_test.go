@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"testing"
+	"reflect"
 )
 
 const encKey = "b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"
@@ -20,18 +21,21 @@ type writeCloser struct {
 
 func (writeCloser) Close() error { return nil }
 
-func TestUpload(t *testing.T) {
+func TestUploadDownload(t *testing.T) {
 	var b bytes.Buffer
 	s := NewFileStore(func(p string) io.ReadCloser { return readCloser{bytes.NewReader(b.Bytes())} }, func(p string) io.WriteCloser { return writeCloser{&b} }, nil, encKey)
+	pic := []byte("picture bytes")
 
-	pic := []byte("test string")
-	s.UploadEncrypted("c.jpg", bytes.NewReader(pic))
-	if len(b.Bytes()) == 0 {
-		t.Error(b.Bytes())
+	s.UploadEncrypted("pic.jpg", bytes.NewReader(pic))
+	expectedLen := 24 + 16 + len(pic)
+	actualLen := len(b.Bytes())
+	if actualLen != expectedLen {
+		t.Errorf("Expected len of the uploaded file: %v, actual: %v. File not written or encryption broken.", expectedLen, actualLen)
 	}
-	var dst bytes.Buffer
-	s.DownloadDecrypted(&dst, "c.jpg")
-	if string(dst.Bytes()) != string(pic) {
-		t.Error("err")
+
+	var downloadDst bytes.Buffer
+	s.DownloadDecrypted(&downloadDst, "pic.jpg")
+	if !(reflect.DeepEqual(pic, downloadDst.Bytes())) {
+		t.Error("Downloaded file does not match the uploaded one.")
 	}
 }

@@ -84,7 +84,7 @@ func (datastore *HashmapMetadataStore) Add(photo *photo.Photo) error {
 	return nil
 }
 
-func (datastore *HashmapMetadataStore) Commit() error {
+func (datastore *HashmapMetadataStore) Persist() error {
 	f, err := datastore.fs.Create(datastore.dbFilePath)
 	if err != nil {
 		return err
@@ -97,9 +97,9 @@ func (datastore *HashmapMetadataStore) Commit() error {
 	return nil
 }
 
-func (datastore *HashmapMetadataStore) Delete(imgID string) error {
-	if _, ok := datastore.data[imgID]; ok {
-		delete(datastore.data, imgID)
+func (datastore *HashmapMetadataStore) Delete(path string) error {
+	if _, ok := datastore.data[path]; ok {
+		delete(datastore.data, path)
 	}
 	return nil
 }

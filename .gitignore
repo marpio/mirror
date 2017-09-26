@@ -17,7 +17,5 @@
 # DB
 *.db
 *.db-journal
-imgstore-cli
-imgstore-web
 .caddy
 Caddyfile
