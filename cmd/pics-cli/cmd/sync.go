@@ -16,8 +16,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -33,23 +31,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var cfgFile string
-
-// RootCmd represents the base command when called without any subcommands
-var RootCmd = &cobra.Command{
-	Use:   "imgstore-cli",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	// Uncomment the following line if your bare application
-	// has an action associated with it:
-	// Run: func(cmd *cobra.Command, args []string) { },
-}
-
 var syncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Sync local directory with a remote.",
@@ -57,29 +38,6 @@ var syncCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		runSync(args[0])
 	},
-}
-
-var downloadCmd = &cobra.Command{
-	Use:   "download",
-	Short: "Download file from remote.",
-	Long:  "",
-	Run: func(cmd *cobra.Command, args []string) {
-		runDownload(args[0], args[1])
-	},
-}
-
-// Execute adds all child commands to the root command and sets flags appropriately.
-// This is called by main.main(). It only needs to happen once to the rootCmd.
-func Execute() {
-	if err := RootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-}
-
-func init() {
-	RootCmd.AddCommand(syncCmd)
-	RootCmd.AddCommand(downloadCmd)
 }
 
 func runSync(dir string) {
@@ -102,8 +60,10 @@ func runSync(dir string) {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-
 	done := wrapChan(sigs)
+	defer close(sigs)
+	defer close(done)
+
 	syncronizer := syncronizer.NewSyncronizer(fileStore,
 		metadataStore,
 		file.FileReader(appFs),
@@ -112,9 +72,6 @@ func runSync(dir string) {
 		metadata.ExtractThumbnail)
 	syncronizer.Sync(dir, done)
 
-	close(sigs)
-	close(done)
-
 	dbFileReader, err := file.FileReader(appFs)(dbPath)
 	if err != nil {
 		log.Print("Error uploading DB")
@@ -122,28 +79,6 @@ func runSync(dir string) {
 	if err := fileStore.UploadEncrypted(dbPath, dbFileReader); err != nil {
 		log.Print("Error uploading DB")
 	}
-}
-
-func runDownload(dstFilePath, remoteFileName string) {
-	l := initLog()
-	defer l.Close()
-
-	encryptionKey := os.Getenv("ENCR_KEY")
-	b2id := os.Getenv("B2_ACCOUNT_ID")
-	b2key := os.Getenv("B2_ACCOUNT_KEY")
-	bucketName := os.Getenv("B2_BUCKET_NAME")
-	ctx := context.Background()
-
-	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
-
-	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
-	f, err := os.Create(dstFilePath)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer f.Close()
-	fileStore.DownloadDecrypted(f, remoteFileName)
 }
 
 func wrapChan(sigs <-chan os.Signal) chan interface{} {
@@ -157,14 +92,4 @@ func wrapChan(sigs <-chan os.Signal) chan interface{} {
 		}
 	}()
 	return c
-}
-
-func initLog() io.Closer {
-	f, err := os.Create("output.log")
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-
-	log.SetOutput(f)
-	return f
 }

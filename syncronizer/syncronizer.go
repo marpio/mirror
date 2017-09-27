@@ -101,14 +101,14 @@ func (s *Syncronizer) extractMetadataDir(dir string, photos []*file.FileInfo, me
 
 			createdAt, err := s.extractCreatedAt(dir, p.Path, f, dirCreatedAt)
 			if err != nil {
-				log.Printf("Can't extract created at: %v", err)
+				log.Printf("Can't extract created_at for path: %v; err: %v", p.Path, err)
 				return
 			}
 			createdAtMonth := time.Date(createdAt.Year(), createdAt.Month(), 1, 0, 0, 0, 0, time.UTC)
 			f.Seek(0, 0)
 			thumb, err := s.extractThumbnail(f)
 			if err != nil {
-				log.Printf("Can't extract thumbnail: %v", err)
+				log.Printf("Can't extract thumbnail for path: %v; err: %v", p.Path, err)
 				return
 			}
 			thumbnailName := file.GenerateUniqueFileName("thumb", p.Path, createdAt)

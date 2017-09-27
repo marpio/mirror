@@ -14,7 +14,7 @@
 
 package main
 
-import "github.com/marpio/img-store/cmd/imgstore-cli/cmd"
+import "github.com/marpio/img-store/cmd/pics-cli/cmd"
 
 func main() {
 	cmd.Execute()

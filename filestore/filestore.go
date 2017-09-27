@@ -41,6 +41,7 @@ func (b *BackendStore) DownloadDecrypted(dst io.Writer, fileName string) {
 	err := crypto.Decrypt(dst, b.encryptionKey, r)
 	if err != nil {
 		log.Print(err)
+		panic(err)
 	}
 }
 

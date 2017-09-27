@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"image/jpeg"
 	"io"
-	"math/rand"
+	"fmt"
 	"path/filepath"
 	"time"
 
@@ -48,9 +48,9 @@ func extractCreatedAt(fs afero.Fs, dir string, path string, r file.File, dirCrea
 			return dirCreatedAt, nil
 		}
 
-		imgCreatedAt, found := findNeighborImgCreatedAt(fs, dir, path)
-		if !found {
-			return time.Time{}, nil
+		imgCreatedAt, err := findNeighborImgCreatedAt(fs, dir, path)
+		if err != nil {
+			return time.Time{}, err
 		}
 		return imgCreatedAt, nil
 	}
@@ -75,33 +75,32 @@ func resizeImg(r io.ReadSeeker) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-func findNeighborImgCreatedAt(fs afero.Fs, dir string, path string) (time.Time, bool) {
+func findNeighborImgCreatedAt(fs afero.Fs, dir string, path string) (time.Time, error) {
 	var imgCreatedAt = time.Time{}
 	matches, _ := afero.Glob(fs, filepath.Join(dir, "*.jpg"))
 	for _, imgfile := range matches {
 		if imgfile == path {
 			continue
 		}
-		imgCreatedAt = func(f string) time.Time {
+		imgCreatedAt, err := func(f string) (time.Time, error) {
 			reader, err := fs.Open(f)
 			if err != nil {
-				return time.Time{}
+				return time.Time{}, err
 			}
 			defer reader.Close()
 			other, err := exif.Decode(reader)
 			if err != nil {
-				return time.Time{}
+				return time.Time{}, err
 			}
 			imgCreatedAt, err = other.DateTime()
 			if err != nil {
-				return time.Time{}
+				return time.Time{}, err
 			}
-			return imgCreatedAt.Add(time.Millisecond * time.Duration(1))
+			return imgCreatedAt.Add(time.Millisecond * time.Duration(1)), nil
 		}(imgfile)
-		foundCreatedAt := imgCreatedAt != time.Time{}
-		if foundCreatedAt {
-			return imgCreatedAt, true
+		if err == nil {
+			return imgCreatedAt, nil
 		}
 	}
-	return time.Time{}.Add(time.Millisecond * time.Duration(rand.Intn(1000000))), false
+	return time.Time{}, fmt.Errorf("Could not find CreatedAt for %v", path)
 }
