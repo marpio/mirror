@@ -44,7 +44,7 @@ jobs:
           command: |
             bash <(curl -s https://codecov.io/bash) -f ${TEST_RESULTS}/coverage.txt
 
-      - setup_remote_docker
+      - setup_remote_docker:
           version: 17.07.0-ce
       - run: |
           TAG=0.1.$CIRCLE_BUILD_NUM
