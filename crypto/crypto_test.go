@@ -2,7 +2,6 @@ package crypto
 
 import (
 	"bytes"
-	"reflect"
 	"testing"
 )
 
@@ -16,7 +15,7 @@ func TestEncrypt(t *testing.T) {
 	}
 
 	Encrypt(&b, encKey, bytes.NewReader(data[:]))
-	if reflect.DeepEqual(b.Bytes(), data) {
+	if bytes.Equal(b.Bytes(), data[:]) {
 		t.Error("Encrypt output should not be equal the input.")
 	}
 }
@@ -31,9 +30,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	Encrypt(&b, encKey, bytes.NewReader(data[:]))
 	var b2 bytes.Buffer
 	Decrypt(&b2, encKey, &b)
-	for i := 0; i < 80000; i++ {
-		if b2.Bytes()[i] != data[i] {
-			t.Error("Encrypt - Decrypt error")
-		}
+	if !bytes.Equal(b2.Bytes(), data[:]) {
+		t.Error("Encrypt - Decrypt error")
 	}
 }

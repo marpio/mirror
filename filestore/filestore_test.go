@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"io"
 	"testing"
-	"reflect"
 )
 
 const encKey = "b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"
@@ -35,7 +34,7 @@ func TestUploadDownload(t *testing.T) {
 
 	var downloadDst bytes.Buffer
 	s.DownloadDecrypted(&downloadDst, "pic.jpg")
-	if !(reflect.DeepEqual(pic, downloadDst.Bytes())) {
+	if !bytes.Equal(pic, downloadDst.Bytes()) {
 		t.Error("Downloaded file does not match the uploaded one.")
 	}
 }
