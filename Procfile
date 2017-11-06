@@ -1,0 +1,1 @@
+web: cd cmd/pics-web/ && ./pics-web
