@@ -28,3 +28,9 @@
 [[constraint]]
   branch = "go1"
   name = "github.com/rwcarlsen/goexif"
+
+[metadata.heroku]
+  root-package = "github.com/marpio/img-store"
+  go-version = "go1.9.2"
+  install = [ "./cmd/pics-web/..." ]
+  ensure = "false"
