@@ -1,1 +1,1 @@
-web: cd cmd/pics-web/ && sh -c 'exec pics-web'
+web: pics-web

@@ -57,7 +57,7 @@ func configureRouter(metadataStore metadatastore.DataStoreReader, fileStore file
 		}
 		fmt.Fprint(w, "ok")
 	})
-	r.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(http.Dir("public/"))))
+	r.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(http.Dir("cmd/pics-web/public/"))))
 	return r
 }
 
@@ -80,7 +80,7 @@ func createMetadataStore(fs afero.Fs, imgDBPath string, fileStore filestore.File
 
 func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		/*months, err := metadataStore.GetMonths()
+		months, err := metadataStore.GetMonths()
 		var folders []interface{}
 		for _, m := range months {
 			data := struct {
@@ -99,7 +99,7 @@ func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.Re
 		ctx := map[string]interface{}{
 			"folders": folders,
 		}
-		tmpl, err := raymond.ParseFile("templates/index.hbs")
+		tmpl, err := raymond.ParseFile("cmd/pics-web/templates/index.hbs")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -108,19 +108,8 @@ func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.Re
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
-		}*/
-		d, _ := os.Getwd()
-		files, err := ioutil.ReadDir(d)
-		if err != nil {
-			log.Fatal(err)
 		}
-		var buffer bytes.Buffer
-
-		for _, f := range files {
-			buffer.WriteString(f.Name())
-		}
-
-		fmt.Fprint(w, buffer.String())
+		fmt.Fprint(w, result)
 	}
 }
 
@@ -146,7 +135,7 @@ func monthImgsHandler(metadataStore metadatastore.DataStoreReader) func(w http.R
 		ctx := map[string][]*photo.Photo{
 			"imgs": imgs,
 		}
-		tmpl, err := raymond.ParseFile("templates/month.hbs")
+		tmpl, err := raymond.ParseFile("cmd/pics-web/templates/month.hbs")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
