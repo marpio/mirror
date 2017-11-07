@@ -1,1 +1,1 @@
-web: sh -c 'cd ./cmd/pics-web/ && exec pics-web'
+web: sh -c 'cd cmd/pics-web/ && exec pics-web'
