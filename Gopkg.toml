@@ -33,4 +33,4 @@
   root-package = "github.com/marpio/img-store"
   go-version = "go1.9.2"
   install = [ "./cmd/pics-web/..." ]
-  ensure = "true"
+  ensure = "false"
