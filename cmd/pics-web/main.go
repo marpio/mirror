@@ -80,7 +80,7 @@ func createMetadataStore(fs afero.Fs, imgDBPath string, fileStore filestore.File
 
 func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		months, err := metadataStore.GetMonths()
+		/*months, err := metadataStore.GetMonths()
 		var folders []interface{}
 		for _, m := range months {
 			data := struct {
@@ -108,8 +108,9 @@ func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.Re
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
-		}
-		fmt.Fprint(w, result)
+		}*/
+		d, _ := os.Getwd()
+		fmt.Fprint(w, d)
 	}
 }
 
