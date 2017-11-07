@@ -110,7 +110,17 @@ func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.Re
 			return
 		}*/
 		d, _ := os.Getwd()
-		fmt.Fprint(w, d)
+		files, err := ioutil.ReadDir(d)
+		if err != nil {
+			log.Fatal(err)
+		}
+		var buffer bytes.Buffer
+
+		for _, f := range files {
+			buffer.WriteString(f.Name())
+		}
+
+		fmt.Fprint(w, buffer.String())
 	}
 }
 
