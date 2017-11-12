@@ -14,14 +14,14 @@ import (
 	"time"
 
 	"github.com/aymerick/raymond"
+	"github.com/goji/httpauth"
+	"github.com/gorilla/mux"
 	"github.com/marpio/img-store/filestore"
+	"github.com/marpio/img-store/filestore/b2"
 	"github.com/marpio/img-store/metadatastore"
 	"github.com/marpio/img-store/metadatastore/hashmap"
 	"github.com/marpio/img-store/photo"
 	"github.com/spf13/afero"
-
-	"github.com/gorilla/mux"
-	"github.com/marpio/img-store/filestore/b2"
 )
 
 func main() {
@@ -30,6 +30,8 @@ func main() {
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
 	dbPath := os.Getenv("IMG_DB")
+	username := os.Getenv("PICS_USERNAME")
+	password := os.Getenv("PICS_PASSWORD")
 	ctx := context.Background()
 	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
@@ -40,8 +42,9 @@ func main() {
 	}
 
 	router := configureRouter(metadataStore, fileStore, encryptionKey, dbPath)
+	http.Handle("/", httpauth.SimpleBasicAuth(username, password)(router))
 
-	http.ListenAndServe(":5000", router)
+	http.ListenAndServe(":5000", nil)
 }
 
 func configureRouter(metadataStore metadatastore.DataStoreReader, fileStore filestore.FileStoreReader, encryptionKey string, imgDBPath string) *mux.Router {
