@@ -49,7 +49,7 @@ jobs:
       - run:
           name: Deploy Master to Dokku
           command: |
-            git push --force dokku master
+            git push --force git@dokku.westus.cloudapp.azure.com:foto.git HEAD:refs/heads/master
       - setup_remote_docker:
           version: 17.07.0-ce
       - run: |
