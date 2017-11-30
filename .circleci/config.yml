@@ -47,9 +47,13 @@ jobs:
           fingerprints:
             - "1c:bc:c4:38:d7:11:55:bb:d5:8f:05:8a:dc:02:86:f2"
       - run:
+          name: Add doku to known_hosts
+          command: |
+            ssh-keyscan -H {DOKKU_HOSTNAME} >> ~/.ssh/known_hosts
+      - run:
           name: Deploy Master to Dokku
           command: |
-            git push --force git@dokku.westus.cloudapp.azure.com:foto.git HEAD:refs/heads/master
+            git push --force git@${DOKKU_HOSTNAME}:foto.git HEAD:refs/heads/master
       - setup_remote_docker:
           version: 17.07.0-ce
       - run: |
