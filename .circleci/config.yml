@@ -49,7 +49,7 @@ jobs:
       - run:
           name: Add doku to known_hosts
           command: |
-            ssh-keyscan -H {DOKKU_HOSTNAME} >> ~/.ssh/known_hosts
+            ssh-keyscan -H ${DOKKU_HOSTNAME} >> ~/.ssh/known_hosts
       - run:
           name: Deploy Master to Dokku
           command: |
