@@ -53,7 +53,7 @@ jobs:
       - run:
           name: Deploy Master to Dokku
           command: |
-            git push --force git@${DOKKU_HOSTNAME}:foto.git HEAD:refs/heads/master
+            git push --force dokku@${DOKKU_HOSTNAME}:foto.git HEAD:refs/heads/master
       - setup_remote_docker:
           version: 17.07.0-ce
       - run: |
