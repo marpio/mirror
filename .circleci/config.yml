@@ -43,13 +43,6 @@ jobs:
           name: Upload coverage report to codecov.io
           command: |
             bash <(curl -s https://codecov.io/bash) -f ${TEST_RESULTS}/coverage.txt
-      - setup_remote_docker:
-          version: 17.07.0-ce
-      - run: |
-          TAG=0.1.$CIRCLE_BUILD_NUM
-          docker build -t   marpiot/pics:$TAG .
-          docker login -u $DOCKER_USER -p $DOCKER_PASS
-          docker push marpiot/pics:$TAG
       - add_ssh_keys:
           fingerprints:
             - "1c:bc:c4:38:d7:11:55:bb:d5:8f:05:8a:dc:02:86:f2"
@@ -57,13 +50,12 @@ jobs:
           name: Deploy Master to Dokku
           command: |
             ssh-keyscan -H ${DOKKU_HOSTNAME} >> ~/.ssh/known_hosts
-            git push --force dokku@${DOKKU_HOSTNAME}:foto.git HEAD:refs/heads/master
-workflows:
-   version: 2
-   build-deploy:
-     jobs:
-       - build:
-        filters:
-             branches:
-               only: master
+            git push --force dokku@${DOKKU_HOSTNAME}:foto HEAD:refs/heads/master
+      - setup_remote_docker:
+          version: 17.07.0-ce
+      - run: |
+          TAG=0.1.$CIRCLE_BUILD_NUM
+          docker build -t   marpiot/pics:$TAG .
+          docker login -u $DOCKER_USER -p $DOCKER_PASS
+          docker push marpiot/pics:$TAG
            
