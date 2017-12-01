@@ -57,5 +57,5 @@ jobs:
           name: Deploy to Dokku
           command: |
             ssh-keyscan -H ${DOKKU_HOSTNAME} >> ~/.ssh/known_hosts
-            ssh dokku@${DOKKU_HOSTNAME} "docker pull marpiot/pics:$TAG && docker tag marpiot/pics:$TAG dokku/foto:$TAG && dokku tags:deploy foto $TAG"
+            ssh dokku@${DOKKU_HOSTNAME} "docker pull marpiot/pics:${TAG} && docker tag marpiot/pics:${TAG} dokku/foto:${TAG} && dokku tags:deploy foto ${TAG}"
            
