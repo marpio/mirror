@@ -60,7 +60,7 @@ func configureRouter(metadataStore metadatastore.DataStoreReader, fileStore file
 		}
 		fmt.Fprint(w, "ok")
 	})
-	r.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(http.Dir("cmd/pics-web/public/"))))
+	r.PathPrefix("/public/").Handler(http.StripPrefix("/public/", http.FileServer(http.Dir("public/"))))
 	return r
 }
 
@@ -102,7 +102,7 @@ func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.Re
 		ctx := map[string]interface{}{
 			"folders": folders,
 		}
-		tmpl, err := raymond.ParseFile("cmd/pics-web/templates/index.hbs")
+		tmpl, err := raymond.ParseFile("templates/index.hbs")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -138,7 +138,7 @@ func monthImgsHandler(metadataStore metadatastore.DataStoreReader) func(w http.R
 		ctx := map[string][]*photo.Photo{
 			"imgs": imgs,
 		}
-		tmpl, err := raymond.ParseFile("cmd/pics-web/templates/month.hbs")
+		tmpl, err := raymond.ParseFile("templates/month.hbs")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
