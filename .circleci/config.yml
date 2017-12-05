@@ -61,7 +61,7 @@ jobs:
           name: Deploy Master to Dokku
           command: |
             ssh-keyscan -H ${DOKKU_HOSTNAME} >> ~/.ssh/known_hosts
-            NR=((CIRCLE_BUILD_NUM--))
+            NR=$((CIRCLE_BUILD_NUM-1))
             TAG=0.1.$NR
             ssh marpio@${DOKKU_HOSTNAME} "docker pull marpiot/pics:$TAG && docker tag marpiot/pics:$TAG dokku/foto:$TAG && dokku tags:deploy foto $TAG"
 workflows:
