@@ -52,7 +52,7 @@ jobs:
           docker push marpiot/pics:$TAG
   deploy:
     docker:
-      - image: ubuntu:17.10
+      - image: governmentpaas/git-ssh:latest
     steps:
       - add_ssh_keys:
           fingerprints:
