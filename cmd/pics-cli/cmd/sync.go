@@ -56,7 +56,7 @@ func runSync(dir string) {
 	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
 
 	appFs := afero.NewOsFs()
-	metadataStore := hashmap.NewMetadataStore(appFs, dbPath)
+	metadataStore := hashmap.New(appFs, dbPath)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)

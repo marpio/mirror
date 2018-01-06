@@ -54,7 +54,7 @@ func TestGetMonths(t *testing.T) {
 	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}, Metadata: &photo.Metadata{CreatedAtMonth: m}})
 	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p2}, Metadata: &photo.Metadata{CreatedAtMonth: m2}})
 	r, _ := s.GetMonths()
-	if len(r) != 2{
+	if len(r) != 2 {
 		t.Errorf("Expected 2 results, got: %v", len(r))
 	}
 	if !(r[0] == m2 && r[1] == m) {
@@ -80,7 +80,7 @@ func TestPersist(t *testing.T) {
 
 	s.Persist()
 	dbPath := "photo.db"
-	s2 := NewMetadataStore(fs, dbPath)
+	s2 := New(fs, dbPath)
 	r, _ := s2.GetAll()
 	if len(r) != 1 {
 		t.Errorf("Expected one result, got: %v", len(r))
@@ -93,10 +93,10 @@ func TestReload(t *testing.T) {
 	p := "/path/to/file"
 	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}})
 	s.Persist()
-	
+
 	fs.Rename(dbPath, "photo2.db")
-	
-	s2 := NewMetadataStore(fs, dbPath)
+
+	s2 := New(fs, dbPath)
 	r, _ := s2.GetAll()
 	if len(r) != 0 {
 		t.Errorf("Expected 0 results, got: %v", len(r))
@@ -113,6 +113,6 @@ func TestReload(t *testing.T) {
 func setup() (*HashmapMetadataStore, afero.Fs) {
 	dbPath := "photo.db"
 	fs := afero.NewMemMapFs()
-	s := NewMetadataStore(fs, dbPath)
+	s := New(fs, dbPath)
 	return s, fs
 }

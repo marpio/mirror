@@ -6,18 +6,18 @@ import (
 	"github.com/marpio/img-store/photo"
 )
 
-type DataStore interface {
-	DataStoreReader
-	DataStoreWriter
+type Service interface {
+	ReaderService
+	WriterService
 }
 
-type DataStoreWriter interface {
+type WriterService interface {
 	Add(photo *photo.Photo) error
 	Delete(path string) error
 	Persist() error
 }
 
-type DataStoreReader interface {
+type ReaderService interface {
 	GetAll() ([]*photo.Photo, error)
 	GetByPath(path string) ([]*photo.Photo, error)
 	GetByMonth(month time.Time) ([]*photo.Photo, error)

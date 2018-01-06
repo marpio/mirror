@@ -35,7 +35,7 @@ func NewFileStore(rp func(string) io.ReadCloser, wp func(string) io.WriteCloser,
 
 func (b *BackendStore) DownloadDecrypted(dst io.Writer, fileName string) {
 	r := b.readFn(fileName)
-	//r.ConcurrentDownloads = downloads
+	//r.ConcurrentDownloads = download
 	defer r.Close()
 
 	err := crypto.Decrypt(dst, b.encryptionKey, r)

@@ -17,7 +17,7 @@ const maxConcurrentUploads = 10
 
 type Syncronizer struct {
 	fileStore        filestore.FileStore
-	metadataStore    metadatastore.DataStore
+	metadataStore    metadatastore.Service
 	fileReader       func(string) (file.File, error)
 	photosFinder     func(string, func(id string, modTime time.Time) bool) []*file.FileInfo
 	extractCreatedAt func(imgPath string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error)
@@ -25,7 +25,7 @@ type Syncronizer struct {
 }
 
 func NewSyncronizer(fileStore filestore.FileStore,
-	metadataStore metadatastore.DataStore,
+	metadataStore metadatastore.Service,
 	fr func(string) (file.File, error),
 	photosFinder func(string, func(id string, modTime time.Time) bool) []*file.FileInfo,
 	extractCreatedAt func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error),
