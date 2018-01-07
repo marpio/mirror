@@ -6,9 +6,10 @@ import (
 	"log"
 
 	"github.com/kurin/blazer/b2"
+	"github.com/marpio/img-store/filestore"
 )
 
-func NewB2(ctx context.Context, b2id string, b2key string, bucketName string) (func(string) io.ReadCloser, func(string) io.WriteCloser, func(string) error) {
+func New(ctx context.Context, b2id, b2key, bucketName, encryptKey string) filestore.Service {
 	bucket := newB2Bucket(ctx, b2id, b2key, bucketName)
 
 	r := func(fileName string) io.ReadCloser {
@@ -26,8 +27,8 @@ func NewB2(ctx context.Context, b2id string, b2key string, bucketName string) (f
 		}
 		return nil
 	}
-
-	return r, w, d
+	b := filestore.Backend{ReadFn: r, WriteFn: w, DeleteFn: d, EncryptionKey: encryptKey}
+	return &b
 }
 
 func newB2Bucket(ctx context.Context, b2id string, b2key string, bucketName string) *b2.Bucket {

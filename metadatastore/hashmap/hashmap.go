@@ -49,10 +49,9 @@ func (datastore *hashmapStore) Reload() error {
 	if err := dec.Decode(&decodedMetadata); err != nil {
 		datastore.data = make(map[string]*photo.Photo)
 		return err
-	} else {
-		datastore.data = decodedMetadata
-		return nil
 	}
+	datastore.data = decodedMetadata
+	return nil
 }
 
 func (datastore *hashmapStore) GetAll() (all []*photo.Photo, err error) {

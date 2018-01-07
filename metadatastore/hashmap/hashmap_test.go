@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/marpio/img-store/file"
+	"github.com/marpio/img-store/metadatastore"
 	"github.com/marpio/img-store/photo"
 	"github.com/spf13/afero"
 )
@@ -110,7 +111,7 @@ func TestReload(t *testing.T) {
 	}
 }
 
-func setup() (*HashmapMetadataStore, afero.Fs) {
+func setup() (metadatastore.Service, afero.Fs) {
 	dbPath := "photo.db"
 	fs := afero.NewMemMapFs()
 	s := New(fs, dbPath)

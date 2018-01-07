@@ -22,7 +22,6 @@ import (
 	"syscall"
 
 	"github.com/marpio/img-store/file"
-	"github.com/marpio/img-store/filestore"
 	"github.com/marpio/img-store/filestore/b2"
 	"github.com/marpio/img-store/metadata"
 	"github.com/marpio/img-store/metadatastore/hashmap"
@@ -51,9 +50,7 @@ func runSync(dir string) {
 	dbPath := os.Getenv("IMG_DB")
 	ctx := context.Background()
 
-	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
-
-	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
+	fileStore := b2.New(ctx, b2id, b2key, bucketName, encryptionKey)
 
 	appFs := afero.NewOsFs()
 	metadataStore := hashmap.New(appFs, dbPath)
@@ -64,13 +61,12 @@ func runSync(dir string) {
 	defer close(sigs)
 	defer close(done)
 
-	syncronizer := syncronizer.NewSyncronizer(fileStore,
+	syncronizer := syncronizer.New(fileStore,
 		metadataStore,
 		file.FileReader(appFs),
 		file.PhotosFinder(appFs),
-		metadata.CreatedAtExtractor(appFs),
-		metadata.ExtractThumbnail)
-	syncronizer.Sync(dir, done)
+		metadata.NewExtractor(appFs))
+	syncronizer.Execute(dir, done)
 
 	dbFileReader, err := file.FileReader(appFs)(dbPath)
 	if err != nil {

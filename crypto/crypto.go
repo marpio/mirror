@@ -12,7 +12,7 @@ import (
 
 const dataChunkSize = 64 * 1024
 
-func Encrypt(dst io.Writer, encryptionKey string, dataReader io.Reader) error {
+func Encrypt(dst io.Writer, encryptionKey string, plainDataReader io.Reader) error {
 	secretKeyBytes, err := hex.DecodeString(encryptionKey)
 	if err != nil {
 		return err
@@ -22,7 +22,7 @@ func Encrypt(dst io.Writer, encryptionKey string, dataReader io.Reader) error {
 	chunkSize := dataChunkSize
 	buf := make([]byte, 0, chunkSize)
 	for {
-		n, err := dataReader.Read(buf[:cap(buf)])
+		n, err := plainDataReader.Read(buf[:cap(buf)])
 		buf = buf[:n]
 		if n == 0 {
 			if err == nil {

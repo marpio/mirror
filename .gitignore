@@ -18,4 +18,3 @@
 *.db
 *.db-journal
 .caddy
-Caddyfile

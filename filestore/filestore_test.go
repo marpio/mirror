@@ -22,7 +22,7 @@ func (writeCloser) Close() error { return nil }
 
 func TestUploadDownload(t *testing.T) {
 	var b bytes.Buffer
-	s := NewFileStore(func(p string) io.ReadCloser { return readCloser{bytes.NewReader(b.Bytes())} }, func(p string) io.WriteCloser { return writeCloser{&b} }, nil, encKey)
+	s := Backend{ReadFn: func(p string) io.ReadCloser { return readCloser{bytes.NewReader(b.Bytes())} }, WriteFn: func(p string) io.WriteCloser { return writeCloser{&b} }, DeleteFn: nil, EncryptionKey: encKey}
 	pic := []byte("picture bytes")
 
 	s.UploadEncrypted("pic.jpg", bytes.NewReader(pic))

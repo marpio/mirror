@@ -33,8 +33,7 @@ func main() {
 	username := os.Getenv("PICS_USERNAME")
 	password := os.Getenv("PICS_PASSWORD")
 	ctx := context.Background()
-	r, w, d := b2.NewB2(ctx, b2id, b2key, bucketName)
-	fileStore := filestore.NewFileStore(r, w, d, encryptionKey)
+	fileStore := b2.New(ctx, b2id, b2key, bucketName, encryptionKey)
 	var appFs afero.Fs = afero.NewOsFs()
 	metadataStore, err := createMetadataStore(appFs, dbPath, fileStore)
 	if err != nil {
@@ -47,7 +46,7 @@ func main() {
 	http.ListenAndServe(":5000", nil)
 }
 
-func configureRouter(metadataStore metadatastore.DataStoreReader, fileStore filestore.FileStoreReader, encryptionKey string, imgDBPath string) *mux.Router {
+func configureRouter(metadataStore metadatastore.ReaderService, fileStore filestore.ReaderService, encryptionKey string, imgDBPath string) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
 	r.HandleFunc("/images/year/{year}/month/{month}", monthImgsHandler(metadataStore))
@@ -64,7 +63,7 @@ func configureRouter(metadataStore metadatastore.DataStoreReader, fileStore file
 	return r
 }
 
-func createMetadataStore(fs afero.Fs, imgDBPath string, fileStore filestore.FileStoreReader) (metadatastore.DataStore, error) {
+func createMetadataStore(fs afero.Fs, imgDBPath string, fileStore filestore.ReaderService) (metadatastore.Service, error) {
 	f, err := fs.Create(filepath.Base(imgDBPath))
 
 	if err != nil {
@@ -77,11 +76,11 @@ func createMetadataStore(fs afero.Fs, imgDBPath string, fileStore filestore.File
 		return nil, err
 	}
 
-	metadataStore := hashmap.NewMetadataStore(fs, imgDBPath)
+	metadataStore := hashmap.New(fs, imgDBPath)
 	return metadataStore, nil
 }
 
-func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.ResponseWriter, r *http.Request) {
+func mainPageHandler(metadataStore metadatastore.ReaderService) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		months, err := metadataStore.GetMonths()
 		var folders []interface{}
@@ -116,7 +115,7 @@ func mainPageHandler(metadataStore metadatastore.DataStoreReader) func(w http.Re
 	}
 }
 
-func monthImgsHandler(metadataStore metadatastore.DataStoreReader) func(w http.ResponseWriter, r *http.Request) {
+func monthImgsHandler(metadataStore metadatastore.ReaderService) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		year, err := strconv.Atoi(vars["year"])
@@ -152,7 +151,7 @@ func monthImgsHandler(metadataStore metadatastore.DataStoreReader) func(w http.R
 	}
 }
 
-func fileHandler(fileStore filestore.FileStoreReader) func(w http.ResponseWriter, r *http.Request) {
+func fileHandler(fileStore filestore.ReaderService) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		fileName := vars["name"]

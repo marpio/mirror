@@ -3,25 +3,91 @@ package metadata
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"image/jpeg"
 	"io"
-	"fmt"
+	"log"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/marpio/img-store/file"
+	"github.com/marpio/img-store/photo"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/spf13/afero"
 )
 
-func CreatedAtExtractor(fs afero.Fs) func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
+type MetadataExtractor interface {
+	Extract(pathsGroupedByDir map[string][]*file.FileInfo, fileReader func(string) (file.File, error)) <-chan *photo.FileWithMetadata
+}
+
+type metadataExtractor struct {
+	extractCreatedAt func(imgPath string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error)
+	extractThumbnail func(r io.ReadSeeker) ([]byte, error)
+}
+
+func NewExtractor(fs afero.Fs) MetadataExtractor {
+	return &metadataExtractor{extractCreatedAt: createdAtExtractor(fs), extractThumbnail: thumbnailExtractor}
+}
+
+func (s metadataExtractor) Extract(pathsGroupedByDir map[string][]*file.FileInfo, fileReader func(string) (file.File, error)) <-chan *photo.FileWithMetadata {
+	metadataStream := make(chan *photo.FileWithMetadata, 100)
+	go func() {
+		defer close(metadataStream)
+		var wg sync.WaitGroup
+		wg.Add(len(pathsGroupedByDir))
+		for dir, paths := range pathsGroupedByDir {
+			go func(directory string, ps []*file.FileInfo) {
+				defer wg.Done()
+				s.extractMetadataDir(directory, ps, metadataStream, fileReader)
+			}(dir, paths)
+		}
+		wg.Wait()
+	}()
+	return metadataStream
+}
+
+func (s metadataExtractor) extractMetadataDir(dir string, photos []*file.FileInfo, metadataStream chan<- *photo.FileWithMetadata, fileReader func(string) (file.File, error)) {
+	dirCreatedAt := time.Time{}
+	for _, ph := range photos {
+		err := func(p *file.FileInfo) error {
+			f, err := fileReader(p.Path)
+			if err != nil {
+				return fmt.Errorf("error opening file %v - err msg: %v", p.Path, err)
+			}
+			defer f.Close()
+
+			createdAt, err := s.extractCreatedAt(dir, p.Path, f, dirCreatedAt)
+			if err != nil {
+				return fmt.Errorf("can't extract created_at for path: %v; err: %v", p.Path, err)
+			}
+			createdAtMonth := time.Date(createdAt.Year(), createdAt.Month(), 1, 0, 0, 0, 0, time.UTC)
+			f.Seek(0, 0)
+			thumb, err := s.extractThumbnail(f)
+			if err != nil {
+				return fmt.Errorf("can't extract thumbnail for path: %v; err: %v", p.Path, err)
+			}
+			thumbnailName := file.GenerateUniqueFileName("thumb", p.Path, createdAt)
+			imgName := file.GenerateUniqueFileName("orig", p.Path, createdAt)
+			res := &photo.FileWithMetadata{FileInfo: p, Thumbnail: thumb, Metadata: &photo.Metadata{Name: imgName, ThumbnailName: thumbnailName, CreatedAt: createdAt, CreatedAtMonth: createdAtMonth}}
+			dirCreatedAt = createdAt
+			metadataStream <- res
+			return nil
+		}(ph)
+		if err != nil {
+			log.Printf("error extracting metadata: %v", err)
+		}
+	}
+}
+
+func createdAtExtractor(fs afero.Fs) func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
 	return func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
 		return extractCreatedAt(fs, dir, path, r, dirCreatedAt)
 	}
 }
 
-func ExtractThumbnail(r io.ReadSeeker) ([]byte, error) {
+func thumbnailExtractor(r io.ReadSeeker) ([]byte, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return nil, err
