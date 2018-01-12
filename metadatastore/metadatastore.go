@@ -3,7 +3,7 @@ package metadatastore
 import (
 	"time"
 
-	"github.com/marpio/img-store/photo"
+	"github.com/marpio/img-store/entity"
 )
 
 type Service interface {
@@ -12,15 +12,15 @@ type Service interface {
 }
 
 type WriterService interface {
-	Add(photo *photo.Photo) error
+	Add(photo *entity.Photo) error
 	Delete(path string) error
 	Persist() error
 }
 
 type ReaderService interface {
-	GetAll() ([]*photo.Photo, error)
-	GetByPath(path string) ([]*photo.Photo, error)
-	GetByMonth(month time.Time) ([]*photo.Photo, error)
+	GetAll() ([]*entity.Photo, error)
+	GetByPath(path string) ([]*entity.Photo, error)
+	GetByMonth(month time.Time) ([]*entity.Photo, error)
 	GetMonths() ([]time.Time, error)
 	Reload() error
 }

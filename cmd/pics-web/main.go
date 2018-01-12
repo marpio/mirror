@@ -16,11 +16,11 @@ import (
 	"github.com/aymerick/raymond"
 	"github.com/goji/httpauth"
 	"github.com/gorilla/mux"
+	"github.com/marpio/img-store/entity"
 	"github.com/marpio/img-store/filestore"
 	"github.com/marpio/img-store/filestore/b2"
 	"github.com/marpio/img-store/metadatastore"
 	"github.com/marpio/img-store/metadatastore/hashmap"
-	"github.com/marpio/img-store/photo"
 	"github.com/spf13/afero"
 )
 
@@ -134,7 +134,7 @@ func monthImgsHandler(metadataStore metadatastore.ReaderService) func(w http.Res
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		ctx := map[string][]*photo.Photo{
+		ctx := map[string][]*entity.Photo{
 			"imgs": imgs,
 		}
 		tmpl, err := raymond.ParseFile("templates/month.hbs")

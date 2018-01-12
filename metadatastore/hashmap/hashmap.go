@@ -7,23 +7,23 @@ import (
 
 	"github.com/marpio/img-store/metadatastore"
 
-	"github.com/marpio/img-store/photo"
+	"github.com/marpio/img-store/entity"
 	"github.com/spf13/afero"
 )
 
 type hashmapStore struct {
 	fs         afero.Fs
-	data       map[string]*photo.Photo
+	data       map[string]*entity.Photo
 	dbFilePath string
 }
 
 type timeSlice []time.Time
 
 func New(fs afero.Fs, dbFilePath string) metadatastore.Service {
-	var decodedMetadata map[string]*photo.Photo
+	var decodedMetadata map[string]*entity.Photo
 	exists, err := afero.Exists(fs, dbFilePath)
 	if err != nil || !exists {
-		decodedMetadata = make(map[string]*photo.Photo)
+		decodedMetadata = make(map[string]*entity.Photo)
 	} else {
 		f, err := fs.Open(dbFilePath)
 		if err != nil {
@@ -32,14 +32,14 @@ func New(fs afero.Fs, dbFilePath string) metadatastore.Service {
 		defer f.Close()
 		dec := gob.NewDecoder(f)
 		if err := dec.Decode(&decodedMetadata); err != nil {
-			decodedMetadata = make(map[string]*photo.Photo)
+			decodedMetadata = make(map[string]*entity.Photo)
 		}
 	}
 	return &hashmapStore{fs: fs, data: decodedMetadata, dbFilePath: dbFilePath}
 }
 
 func (datastore *hashmapStore) Reload() error {
-	var decodedMetadata map[string]*photo.Photo
+	var decodedMetadata map[string]*entity.Photo
 	f, err := datastore.fs.Open(datastore.dbFilePath)
 	if err != nil {
 		return err
@@ -47,22 +47,22 @@ func (datastore *hashmapStore) Reload() error {
 	defer f.Close()
 	dec := gob.NewDecoder(f)
 	if err := dec.Decode(&decodedMetadata); err != nil {
-		datastore.data = make(map[string]*photo.Photo)
+		datastore.data = make(map[string]*entity.Photo)
 		return err
 	}
 	datastore.data = decodedMetadata
 	return nil
 }
 
-func (datastore *hashmapStore) GetAll() (all []*photo.Photo, err error) {
+func (datastore *hashmapStore) GetAll() (all []*entity.Photo, err error) {
 	for _, p := range datastore.data {
 		all = append(all, p)
 	}
 	return all, nil
 }
 
-func (datastore *hashmapStore) GetByMonth(month time.Time) ([]*photo.Photo, error) {
-	var res = []*photo.Photo{}
+func (datastore *hashmapStore) GetByMonth(month time.Time) ([]*entity.Photo, error) {
+	var res = []*entity.Photo{}
 
 	for _, p := range datastore.data {
 		if p.CreatedAtMonth == month {
@@ -72,15 +72,15 @@ func (datastore *hashmapStore) GetByMonth(month time.Time) ([]*photo.Photo, erro
 	return res, nil
 }
 
-func (datastore *hashmapStore) GetByPath(path string) ([]*photo.Photo, error) {
-	res := make([]*photo.Photo, 0)
+func (datastore *hashmapStore) GetByPath(path string) ([]*entity.Photo, error) {
+	res := make([]*entity.Photo, 0)
 	if p, ok := datastore.data[path]; ok {
 		res = append(res, p)
 	}
 	return res, nil
 }
 
-func (datastore *hashmapStore) Add(photo *photo.Photo) error {
+func (datastore *hashmapStore) Add(photo *entity.Photo) error {
 	datastore.data[photo.Path] = photo
 	return nil
 }

@@ -4,16 +4,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/marpio/img-store/entity"
 	"github.com/marpio/img-store/file"
 	"github.com/marpio/img-store/metadatastore"
-	"github.com/marpio/img-store/photo"
 	"github.com/spf13/afero"
 )
 
 func TestGetAll(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p}})
 	r, _ := s.GetAll()
 	if len(r) != 1 {
 		t.Errorf("Expected one result, got: %v", len(r))
@@ -24,8 +24,8 @@ func TestGetByPath(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	p2 := "/path/to/file2"
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}})
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p2}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p2}})
 	r, _ := s.GetByPath(p)
 	if len(r) != 1 {
 		t.Errorf("Expected one result, got %v", len(r))
@@ -39,7 +39,7 @@ func TestGetByMonth(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}, Metadata: &photo.Metadata{CreatedAtMonth: m}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p}, Metadata: &entity.Metadata{CreatedAtMonth: m}})
 	r, _ := s.GetByMonth(m)
 	if len(r) != 1 || r[0].CreatedAtMonth != m {
 		t.Errorf("Expected one result, got: %v", len(r))
@@ -52,8 +52,8 @@ func TestGetMonths(t *testing.T) {
 	p2 := "/path/to/file2"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 	m2 := time.Date(2017, 6, 1, 0, 0, 0, 0, time.UTC)
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}, Metadata: &photo.Metadata{CreatedAtMonth: m}})
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p2}, Metadata: &photo.Metadata{CreatedAtMonth: m2}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p}, Metadata: &entity.Metadata{CreatedAtMonth: m}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p2}, Metadata: &entity.Metadata{CreatedAtMonth: m2}})
 	r, _ := s.GetMonths()
 	if len(r) != 2 {
 		t.Errorf("Expected 2 results, got: %v", len(r))
@@ -66,7 +66,7 @@ func TestGetMonths(t *testing.T) {
 func TestDelete(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p}})
 	s.Delete(p)
 	r, _ := s.GetByPath(p)
 	if len(r) > 0 {
@@ -77,10 +77,10 @@ func TestDelete(t *testing.T) {
 func TestPersist(t *testing.T) {
 	s, fs := setup()
 	p := "/path/to/file"
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p}})
 
 	s.Persist()
-	dbPath := "photo.db"
+	dbPath := "entity.db"
 	s2 := New(fs, dbPath)
 	r, _ := s2.GetAll()
 	if len(r) != 1 {
@@ -89,10 +89,10 @@ func TestPersist(t *testing.T) {
 }
 
 func TestReload(t *testing.T) {
-	dbPath := "photo.db"
+	dbPath := "entity.db"
 	s, fs := setup()
 	p := "/path/to/file"
-	s.Add(&photo.Photo{FileInfo: &file.FileInfo{Path: p}})
+	s.Add(&entity.Photo{FileInfo: &file.FileInfo{Path: p}})
 	s.Persist()
 
 	fs.Rename(dbPath, "photo2.db")
@@ -112,7 +112,7 @@ func TestReload(t *testing.T) {
 }
 
 func setup() (metadatastore.Service, afero.Fs) {
-	dbPath := "photo.db"
+	dbPath := "entity.db"
 	fs := afero.NewMemMapFs()
 	s := New(fs, dbPath)
 	return s, fs

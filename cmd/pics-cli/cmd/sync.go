@@ -21,8 +21,8 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/marpio/img-store/file"
 	"github.com/marpio/img-store/filestore/b2"
+	"github.com/marpio/img-store/fsutils"
 	"github.com/marpio/img-store/metadata"
 	"github.com/marpio/img-store/metadatastore/hashmap"
 	"github.com/marpio/img-store/syncronizer"
@@ -63,12 +63,12 @@ func runSync(dir string) {
 
 	syncronizer := syncronizer.New(fileStore,
 		metadataStore,
-		file.FileReader(appFs),
-		file.PhotosFinder(appFs),
+		fsutils.FileReader(appFs),
+		fsutils.PhotosFinder(appFs),
 		metadata.NewExtractor(appFs))
 	syncronizer.Execute(dir, done)
 
-	dbFileReader, err := file.FileReader(appFs)(dbPath)
+	dbFileReader, err := fsutils.FileReader(appFs)(dbPath)
 	if err != nil {
 		log.Print("Error uploading DB")
 	}

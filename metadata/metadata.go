@@ -11,19 +11,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/marpio/img-store/file"
-	"github.com/marpio/img-store/photo"
+	"github.com/marpio/img-store/entity"
+	"github.com/marpio/img-store/fsutils"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/spf13/afero"
 )
 
 type MetadataExtractor interface {
-	Extract(pathsGroupedByDir map[string][]*file.FileInfo, fileReader func(string) (file.File, error)) <-chan *photo.FileWithMetadata
+	Extract(pathsGroupedByDir map[string][]*fsutils.FileInfo, fileReader fsutils.FileReaderFn) <-chan *entity.PhotoWithThumb
 }
 
 type metadataExtractor struct {
-	extractCreatedAt func(imgPath string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error)
+	extractCreatedAt func(imgPath string, path string, r fsutils.File, dirCreatedAt time.Time) (time.Time, error)
 	extractThumbnail func(r io.ReadSeeker) ([]byte, error)
 }
 
@@ -31,14 +31,14 @@ func NewExtractor(fs afero.Fs) MetadataExtractor {
 	return &metadataExtractor{extractCreatedAt: createdAtExtractor(fs), extractThumbnail: thumbnailExtractor}
 }
 
-func (s metadataExtractor) Extract(pathsGroupedByDir map[string][]*file.FileInfo, fileReader func(string) (file.File, error)) <-chan *photo.FileWithMetadata {
-	metadataStream := make(chan *photo.FileWithMetadata, 100)
+func (s metadataExtractor) Extract(pathsGroupedByDir map[string][]*fsutils.FileInfo, fileReader fsutils.FileReaderFn) <-chan *entity.PhotoWithThumb {
+	metadataStream := make(chan *entity.PhotoWithThumb, 100)
 	go func() {
 		defer close(metadataStream)
 		var wg sync.WaitGroup
 		wg.Add(len(pathsGroupedByDir))
 		for dir, paths := range pathsGroupedByDir {
-			go func(directory string, ps []*file.FileInfo) {
+			go func(directory string, ps []*fsutils.FileInfo) {
 				defer wg.Done()
 				s.extractMetadataDir(directory, ps, metadataStream, fileReader)
 			}(dir, paths)
@@ -48,10 +48,10 @@ func (s metadataExtractor) Extract(pathsGroupedByDir map[string][]*file.FileInfo
 	return metadataStream
 }
 
-func (s metadataExtractor) extractMetadataDir(dir string, photos []*file.FileInfo, metadataStream chan<- *photo.FileWithMetadata, fileReader func(string) (file.File, error)) {
+func (s metadataExtractor) extractMetadataDir(dir string, photos []*fsutils.FileInfo, metadataStream chan<- *entity.PhotoWithThumb, fileReader fsutils.FileReaderFn) {
 	dirCreatedAt := time.Time{}
 	for _, ph := range photos {
-		err := func(p *file.FileInfo) error {
+		err := func(p *fsutils.FileInfo) error {
 			f, err := fileReader(p.Path)
 			if err != nil {
 				return fmt.Errorf("error opening file %v - err msg: %v", p.Path, err)
@@ -68,9 +68,9 @@ func (s metadataExtractor) extractMetadataDir(dir string, photos []*file.FileInf
 			if err != nil {
 				return fmt.Errorf("can't extract thumbnail for path: %v; err: %v", p.Path, err)
 			}
-			thumbnailName := file.GenerateUniqueFileName("thumb", p.Path, createdAt)
-			imgName := file.GenerateUniqueFileName("orig", p.Path, createdAt)
-			res := &photo.FileWithMetadata{FileInfo: p, Thumbnail: thumb, Metadata: &photo.Metadata{Name: imgName, ThumbnailName: thumbnailName, CreatedAt: createdAt, CreatedAtMonth: createdAtMonth}}
+			thumbnailName := fsutils.GenerateUniqueFileName("thumb", p.Path, createdAt)
+			imgName := fsutils.GenerateUniqueFileName("orig", p.Path, createdAt)
+			res := &entity.PhotoWithThumb{Photo: &entity.Photo{FileInfo: p, Metadata: &entity.Metadata{Name: imgName, ThumbnailName: thumbnailName, CreatedAt: createdAt, CreatedAtMonth: createdAtMonth}}, Thumbnail: thumb}
 			dirCreatedAt = createdAt
 			metadataStream <- res
 			return nil
@@ -81,8 +81,8 @@ func (s metadataExtractor) extractMetadataDir(dir string, photos []*file.FileInf
 	}
 }
 
-func createdAtExtractor(fs afero.Fs) func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
-	return func(dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
+func createdAtExtractor(fs afero.Fs) func(dir string, path string, r fsutils.File, dirCreatedAt time.Time) (time.Time, error) {
+	return func(dir string, path string, r fsutils.File, dirCreatedAt time.Time) (time.Time, error) {
 		return extractCreatedAt(fs, dir, path, r, dirCreatedAt)
 	}
 }
@@ -103,7 +103,7 @@ func thumbnailExtractor(r io.ReadSeeker) ([]byte, error) {
 	return thumbnail, nil
 }
 
-func extractCreatedAt(fs afero.Fs, dir string, path string, r file.File, dirCreatedAt time.Time) (time.Time, error) {
+func extractCreatedAt(fs afero.Fs, dir string, path string, r fsutils.File, dirCreatedAt time.Time) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return time.Time{}, err
