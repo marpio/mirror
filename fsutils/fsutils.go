@@ -25,16 +25,25 @@ type FileInfo struct {
 
 type FileReaderFn func(path string) (File, error)
 
-func PhotosFinder(fs afero.Fs) func(rootPath string, predicate func(string, time.Time) bool) (newAndChangedPhotos []*FileInfo) {
-	return func(rootPath string, predicate func(string, time.Time) bool) (newAndChangedPhotos []*FileInfo) {
-		return findFiles(fs, rootPath, predicate, ".jpg", ".jpeg")
-	}
+type LocalFilesRepo interface {
+	SearchFiles(rootPath string, filter func(string, time.Time) bool, fileExt ...string) []*FileInfo
+	ReadFile(path string) (File, error)
 }
 
-func FileReader(fs afero.Fs) FileReaderFn {
-	return func(path string) (File, error) {
-		return fs.Open(path)
-	}
+func NewLocalFilesRepo(fs afero.Fs) LocalFilesRepo {
+	return &locFilesRepo{fs: fs}
+}
+
+type locFilesRepo struct {
+	fs afero.Fs
+}
+
+func (repo *locFilesRepo) SearchFiles(rootPath string, filter func(string, time.Time) bool, fileExt ...string) []*FileInfo {
+	return findFiles(repo.fs, rootPath, filter, fileExt...)
+}
+
+func (repo *locFilesRepo) ReadFile(path string) (File, error) {
+	return repo.fs.Open(path)
 }
 
 func GenerateUniqueFileName(prefix string, fpath string, createdAt time.Time) string {
@@ -59,8 +68,8 @@ func GroupByDir(files []*FileInfo) map[string][]*FileInfo {
 	return photosGroupedByDir
 }
 
-func findFiles(fs afero.Fs, rootPath string, predicate func(string, time.Time) bool, fileExt ...string) (files []*FileInfo) {
-	files = make([]*FileInfo, 0)
+func findFiles(fs afero.Fs, rootPath string, predicate func(string, time.Time) bool, fileExt ...string) []*FileInfo {
+	files := make([]*FileInfo, 0)
 
 	err := afero.Walk(fs, rootPath, func(path string, fi os.FileInfo, err error) error {
 

@@ -61,14 +61,14 @@ func runSync(dir string) {
 	defer close(sigs)
 	defer close(done)
 
+	localFilesRepo := fsutils.NewLocalFilesRepo(appFs)
 	syncronizer := syncronizer.New(fileStore,
 		metadataStore,
-		fsutils.FileReader(appFs),
-		fsutils.PhotosFinder(appFs),
+		localFilesRepo,
 		metadata.NewExtractor(appFs))
 	syncronizer.Execute(dir, done)
 
-	dbFileReader, err := fsutils.FileReader(appFs)(dbPath)
+	dbFileReader, err := localFilesRepo.ReadFile(dbPath)
 	if err != nil {
 		log.Print("Error uploading DB")
 	}

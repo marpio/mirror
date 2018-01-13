@@ -10,36 +10,34 @@ import (
 	"github.com/marpio/img-store/metadatastore"
 )
 
-type Syncronizer struct {
-	fileStore     filestore.Service
-	metadataStore metadatastore.Service
-	fileReader    fsutils.FileReaderFn
-	photosFinder  func(string, func(id string, modTime time.Time) bool) []*fsutils.FileInfo
-	metadataextr  metadata.MetadataExtractor
+type Service struct {
+	fileStore      filestore.Service
+	metadataStore  metadatastore.Service
+	localFilesRepo fsutils.LocalFilesRepo
+	metadataextr   metadata.Extractor
 }
 
 func New(fileStore filestore.Service,
 	metadataStore metadatastore.Service,
-	fr fsutils.FileReaderFn,
-	photosFinder func(string, func(id string, modTime time.Time) bool) []*fsutils.FileInfo,
-	metadataextr metadata.MetadataExtractor) *Syncronizer {
+	localFilesRepo fsutils.LocalFilesRepo,
+	metadataextr metadata.Extractor) *Service {
 
-	return &Syncronizer{fileStore: fileStore, metadataStore: metadataStore, fileReader: fr, photosFinder: photosFinder, metadataextr: metadataextr}
+	return &Service{fileStore: fileStore, metadataStore: metadataStore, localFilesRepo: localFilesRepo, metadataextr: metadataextr}
 }
 
-func (s *Syncronizer) Execute(rootPath string, done <-chan interface{}) {
+func (s *Service) Execute(rootPath string, done <-chan interface{}) {
 	isChangedOrNew := func(id string, modTime time.Time) bool {
 		existing, _ := s.metadataStore.GetByPath(id)
 		return (len(existing) == 0 || existing[0].ModTime != modTime)
 	}
 
-	newAndChangedPhotos := s.photosFinder(rootPath, isChangedOrNew)
+	newAndChangedPhotos := s.localFilesRepo.SearchFiles(rootPath, isChangedOrNew, ".jpg", ".jpeg")
 	for _, p := range newAndChangedPhotos {
 		s.metadataStore.Delete(p.Path)
 	}
 
-	metadataStream := s.metadataextr.Extract(fsutils.GroupByDir(newAndChangedPhotos), s.fileReader)
-	photosStream := filestore.UploadPhotos(metadataStream, s.fileReader, s.fileStore)
+	metadataStream := s.metadataextr.Extract(fsutils.GroupByDir(newAndChangedPhotos), s.localFilesRepo.ReadFile)
+	photosStream := filestore.UploadPhotos(metadataStream, s.localFilesRepo.ReadFile, s.fileStore)
 
 	for {
 		select {
