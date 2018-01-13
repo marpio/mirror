@@ -35,11 +35,11 @@ func (s extractor) Extract(pathsGroupedByDir map[string][]*fsutils.FileInfo, fil
 		defer close(metadataStream)
 		var wg sync.WaitGroup
 		wg.Add(len(pathsGroupedByDir))
-		for dir, paths := range pathsGroupedByDir {
-			go func(directory string, ps []*fsutils.FileInfo) {
+		for _, paths := range pathsGroupedByDir {
+			go func(ps []*fsutils.FileInfo) {
 				defer wg.Done()
 				s.extractMetadataDir(ps, metadataStream, fileReader)
-			}(dir, paths)
+			}(paths)
 		}
 		wg.Wait()
 	}()
@@ -48,7 +48,7 @@ func (s extractor) Extract(pathsGroupedByDir map[string][]*fsutils.FileInfo, fil
 
 func (s extractor) extractMetadataDir(photos []*fsutils.FileInfo, metadataStream chan<- *entity.PhotoWithThumb, fileReader fsutils.FileReaderFn) {
 	dirCreatedAt := time.Time{}
-	md := make([]*entity.PhotoWithThumb, len(photos))
+	md := make([]*entity.PhotoWithThumb, 0, len(photos))
 	for _, ph := range photos {
 		f, err := fileReader(ph.Path)
 		if err != nil {
@@ -67,7 +67,7 @@ func (s extractor) extractMetadataDir(photos []*fsutils.FileInfo, metadataStream
 		f.Seek(0, 0)
 		thumb, err := s.extractThumbnail(f)
 		if err != nil {
-			log.Printf("can't extract thumbnail for path: %v;: %v", ph.Path, err)
+			log.Printf("can't extract thumbnail for path: %v: %v", ph.Path, err)
 		}
 		thumbnailName := fsutils.GenerateUniqueFileName("thumb", ph.Path, createdAt)
 		imgName := fsutils.GenerateUniqueFileName("orig", ph.Path, createdAt)
@@ -75,8 +75,8 @@ func (s extractor) extractMetadataDir(photos []*fsutils.FileInfo, metadataStream
 		md = append(md, p)
 	}
 	for _, meta := range md {
-		if (meta.Metadata.CreatedAt == time.Time{}) {
-			meta.Metadata.CreatedAt = dirCreatedAt
+		if (meta.CreatedAt == time.Time{}) {
+			meta.CreatedAt = dirCreatedAt
 		}
 		metadataStream <- meta
 	}
