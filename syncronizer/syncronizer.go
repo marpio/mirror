@@ -4,25 +4,25 @@ import (
 	"log"
 	"time"
 
-	"github.com/marpio/img-store/filestore"
-	"github.com/marpio/img-store/fsutils"
+	"github.com/marpio/img-store/localstorage"
 	"github.com/marpio/img-store/metadata"
 	"github.com/marpio/img-store/metadatastore"
+	"github.com/marpio/img-store/remotestorage"
 )
 
 type Service struct {
-	fileStore      filestore.Service
-	metadataStore  metadatastore.Service
-	localFilesRepo fsutils.LocalFilesRepo
-	metadataextr   metadata.Extractor
+	remotestrg    remotestorage.Service
+	metadataStore metadatastore.Service
+	localstrg     localstorage.Service
+	metadataextr  metadata.Extractor
 }
 
-func New(fileStore filestore.Service,
+func New(remotestorage remotestorage.Service,
 	metadataStore metadatastore.Service,
-	localFilesRepo fsutils.LocalFilesRepo,
+	localFilesRepo localstorage.Service,
 	metadataextr metadata.Extractor) *Service {
 
-	return &Service{fileStore: fileStore, metadataStore: metadataStore, localFilesRepo: localFilesRepo, metadataextr: metadataextr}
+	return &Service{remotestrg: remotestorage, metadataStore: metadataStore, localstrg: localFilesRepo, metadataextr: metadataextr}
 }
 
 func (s *Service) Execute(rootPath string, done <-chan interface{}) {
@@ -31,13 +31,13 @@ func (s *Service) Execute(rootPath string, done <-chan interface{}) {
 		return (len(existing) == 0 || existing[0].ModTime != modTime)
 	}
 
-	newAndChangedPhotos := s.localFilesRepo.SearchFiles(rootPath, isChangedOrNew, ".jpg", ".jpeg")
+	newAndChangedPhotos := s.localstrg.SearchFiles(rootPath, isChangedOrNew, ".jpg", ".jpeg")
 	for _, p := range newAndChangedPhotos {
 		s.metadataStore.Delete(p.Path)
 	}
 
-	metadataStream := s.metadataextr.Extract(fsutils.GroupByDir(newAndChangedPhotos), s.localFilesRepo.ReadFile)
-	photosStream := filestore.UploadPhotos(metadataStream, s.localFilesRepo.ReadFile, s.fileStore)
+	metadataStream := s.metadataextr.Extract(localstorage.GroupByDir(newAndChangedPhotos), s.localstrg.ReadFile)
+	photosStream := remotestorage.UploadPhotos(metadataStream, s.localstrg.ReadFile, s.remotestrg)
 
 	for {
 		select {

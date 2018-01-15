@@ -3,7 +3,7 @@ package entity
 import (
 	"time"
 
-	"github.com/marpio/img-store/fsutils"
+	"github.com/marpio/img-store/fs"
 )
 
 type Metadata struct {
@@ -19,6 +19,6 @@ type PhotoWithThumb struct {
 }
 
 type Photo struct {
-	*fsutils.FileInfo
+	*fs.FileInfo
 	*Metadata
 }

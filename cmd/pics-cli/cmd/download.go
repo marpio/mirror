@@ -19,7 +19,8 @@ import (
 	"log"
 	"os"
 
-	"github.com/marpio/img-store/filestore/b2"
+	"github.com/marpio/img-store/crypto"
+	"github.com/marpio/img-store/remotestorage/b2"
 	"github.com/spf13/cobra"
 )
 
@@ -42,7 +43,7 @@ func runDownload(dstFilePath, remoteFileName string) {
 	bucketName := os.Getenv("B2_BUCKET_NAME")
 	ctx := context.Background()
 
-	fileStore := b2.New(ctx, b2id, b2key, bucketName, encryptionKey)
+	remotestorage := b2.New(ctx, b2id, b2key, bucketName, encryptionKey, crypto.NewService())
 
 	f, err := os.Create(dstFilePath)
 
@@ -50,5 +51,5 @@ func runDownload(dstFilePath, remoteFileName string) {
 		log.Fatal(err)
 	}
 	defer f.Close()
-	fileStore.DownloadDecrypted(f, remoteFileName)
+	remotestorage.DownloadDecrypted(f, remoteFileName)
 }

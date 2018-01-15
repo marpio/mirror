@@ -16,11 +16,12 @@ import (
 	"github.com/aymerick/raymond"
 	"github.com/goji/httpauth"
 	"github.com/gorilla/mux"
+	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/entity"
-	"github.com/marpio/img-store/filestore"
-	"github.com/marpio/img-store/filestore/b2"
 	"github.com/marpio/img-store/metadatastore"
 	"github.com/marpio/img-store/metadatastore/hashmap"
+	"github.com/marpio/img-store/remotestorage"
+	"github.com/marpio/img-store/remotestorage/b2"
 	"github.com/spf13/afero"
 )
 
@@ -33,24 +34,24 @@ func main() {
 	username := os.Getenv("PICS_USERNAME")
 	password := os.Getenv("PICS_PASSWORD")
 	ctx := context.Background()
-	fileStore := b2.New(ctx, b2id, b2key, bucketName, encryptionKey)
+	remotestorage := b2.New(ctx, b2id, b2key, bucketName, encryptionKey, crypto.NewService())
 	var appFs afero.Fs = afero.NewOsFs()
-	metadataStore, err := createMetadataStore(appFs, dbPath, fileStore)
+	metadataStore, err := createMetadataStore(appFs, dbPath, remotestorage)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	router := configureRouter(metadataStore, fileStore, encryptionKey, dbPath)
+	router := configureRouter(metadataStore, remotestorage, encryptionKey, dbPath)
 	http.Handle("/", httpauth.SimpleBasicAuth(username, password)(router))
 
 	http.ListenAndServe(":5000", nil)
 }
 
-func configureRouter(metadataStore metadatastore.ReaderService, fileStore filestore.ReaderService, encryptionKey string, imgDBPath string) *mux.Router {
+func configureRouter(metadataStore metadatastore.ReaderService, remotestorage remotestorage.ReaderService, encryptionKey string, imgDBPath string) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
 	r.HandleFunc("/images/year/{year}/month/{month}", monthImgsHandler(metadataStore))
-	r.HandleFunc("/files/{name}", fileHandler(fileStore))
+	r.HandleFunc("/files/{name}", fileHandler(remotestorage))
 	r.HandleFunc("/reloaddb", func(w http.ResponseWriter, r *http.Request) {
 		err := metadataStore.Reload()
 		if err != nil {
@@ -63,14 +64,14 @@ func configureRouter(metadataStore metadatastore.ReaderService, fileStore filest
 	return r
 }
 
-func createMetadataStore(fs afero.Fs, imgDBPath string, fileStore filestore.ReaderService) (metadatastore.Service, error) {
+func createMetadataStore(fs afero.Fs, imgDBPath string, remotestorage remotestorage.ReaderService) (metadatastore.Service, error) {
 	f, err := fs.Create(filepath.Base(imgDBPath))
 
 	if err != nil {
 		log.Print(err)
 		return nil, err
 	}
-	fileStore.DownloadDecrypted(f, filepath.Base(imgDBPath))
+	remotestorage.DownloadDecrypted(f, filepath.Base(imgDBPath))
 	if err := f.Close(); err != nil {
 		log.Print(err)
 		return nil, err
@@ -151,7 +152,7 @@ func monthImgsHandler(metadataStore metadatastore.ReaderService) func(w http.Res
 	}
 }
 
-func fileHandler(fileStore filestore.ReaderService) func(w http.ResponseWriter, r *http.Request) {
+func fileHandler(remotestorage remotestorage.ReaderService) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		fileName := vars["name"]
@@ -159,7 +160,7 @@ func fileHandler(fileStore filestore.ReaderService) func(w http.ResponseWriter, 
 		pr, pw := io.Pipe()
 		go func() {
 			defer pw.Close()
-			fileStore.DownloadDecrypted(pw, fileName)
+			remotestorage.DownloadDecrypted(pw, fileName)
 		}()
 		b, err := ioutil.ReadAll(pr)
 		if err != nil {
