@@ -34,20 +34,20 @@ func main() {
 	username := os.Getenv("PICS_USERNAME")
 	password := os.Getenv("PICS_PASSWORD")
 	ctx := context.Background()
-	remotestorage := b2.New(ctx, b2id, b2key, bucketName, encryptionKey, crypto.NewService())
+	remotestorage := b2.New(ctx, b2id, b2key, bucketName, crypto.NewService(encryptionKey))
 	var appFs afero.Fs = afero.NewOsFs()
 	metadataStore, err := createMetadataStore(appFs, dbPath, remotestorage)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	router := configureRouter(metadataStore, remotestorage, encryptionKey, dbPath)
+	router := configureRouter(metadataStore, remotestorage, dbPath)
 	http.Handle("/", httpauth.SimpleBasicAuth(username, password)(router))
 
 	http.ListenAndServe(":5000", nil)
 }
 
-func configureRouter(metadataStore metadatastore.ReaderService, remotestorage remotestorage.ReaderService, encryptionKey string, imgDBPath string) *mux.Router {
+func configureRouter(metadataStore metadatastore.ReaderService, remotestorage remotestorage.ReaderService, imgDBPath string) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
 	r.HandleFunc("/images/year/{year}/month/{month}", monthImgsHandler(metadataStore))

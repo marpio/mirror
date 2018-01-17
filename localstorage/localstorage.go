@@ -3,9 +3,6 @@ package localstorage
 import (
 	"log"
 	"os"
-	"path"
-	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -32,28 +29,6 @@ func (repo *srv) SearchFiles(rootPath string, filter func(string, time.Time) boo
 
 func (repo *srv) ReadFile(path string) (fs.File, error) {
 	return repo.fs.Open(path)
-}
-
-func GenerateUniqueFileName(prefix string, fpath string, createdAt time.Time) string {
-	nano := strconv.FormatInt(createdAt.UnixNano(), 10)
-	imgFileName := prefix + "_" + nano + "_" + path.Base(fpath)
-	return imgFileName
-}
-
-func GroupByDir(files []*fs.FileInfo) map[string][]*fs.FileInfo {
-	photosGroupedByDir := make(map[string][]*fs.FileInfo)
-	for _, p := range files {
-		dir := filepath.Dir(p.Path)
-		if v, ok := photosGroupedByDir[dir]; ok {
-			v = append(v, p)
-			photosGroupedByDir[dir] = v
-		} else {
-			ps := make([]*fs.FileInfo, 0)
-			ps = append(ps, p)
-			photosGroupedByDir[dir] = ps
-		}
-	}
-	return photosGroupedByDir
 }
 
 func findFiles(afs afero.Fs, rootPath string, predicate func(string, time.Time) bool, fileExt ...string) []*fs.FileInfo {

@@ -75,13 +75,13 @@ func TestDelete(t *testing.T) {
 }
 
 func TestPersist(t *testing.T) {
-	s, fs := setup()
+	s, afs := setup()
 	p := "/path/to/file"
 	s.Add(&entity.Photo{FileInfo: &fs.FileInfo{Path: p}})
 
 	s.Persist()
 	dbPath := "entity.db"
-	s2 := New(fs, dbPath)
+	s2 := New(afs, dbPath)
 	r, _ := s2.GetAll()
 	if len(r) != 1 {
 		t.Errorf("Expected one result, got: %v", len(r))
@@ -90,20 +90,20 @@ func TestPersist(t *testing.T) {
 
 func TestReload(t *testing.T) {
 	dbPath := "entity.db"
-	s, fs := setup()
+	s, afs := setup()
 	p := "/path/to/file"
 	s.Add(&entity.Photo{FileInfo: &fs.FileInfo{Path: p}})
 	s.Persist()
 
-	fs.Rename(dbPath, "photo2.db")
+	afs.Rename(dbPath, "photo2.db")
 
-	s2 := New(fs, dbPath)
+	s2 := New(afs, dbPath)
 	r, _ := s2.GetAll()
 	if len(r) != 0 {
 		t.Errorf("Expected 0 results, got: %v", len(r))
 	}
 
-	fs.Rename("photo2.db", dbPath)
+	afs.Rename("photo2.db", dbPath)
 	s2.Reload()
 	r, _ = s2.GetAll()
 	if len(r) != 1 {
@@ -113,7 +113,7 @@ func TestReload(t *testing.T) {
 
 func setup() (metadatastore.Service, afero.Fs) {
 	dbPath := "entity.db"
-	fs := afero.NewMemMapFs()
-	s := New(fs, dbPath)
-	return s, fs
+	afs := afero.NewMemMapFs()
+	s := New(afs, dbPath)
+	return s, afs
 }

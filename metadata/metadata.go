@@ -11,26 +11,23 @@ import (
 
 	"github.com/marpio/img-store/entity"
 	"github.com/marpio/img-store/fs"
-	"github.com/marpio/img-store/localstorage"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
-	"github.com/spf13/afero"
 )
 
 type Extractor interface {
-	Extract(pathsGroupedByDir map[string][]*fs.FileInfo, fileReader fs.FileReaderFn) <-chan *entity.PhotoWithThumb
+	Extract(files []*fs.FileInfo, fileReader fs.FileReaderFn) <-chan *entity.PhotoWithThumb
 }
 
 type extractor struct {
-	extractCreatedAt func(r fs.File) (time.Time, error)
-	extractThumbnail func(r io.ReadSeeker) ([]byte, error)
 }
 
-func NewExtractor(fs afero.Fs) Extractor {
-	return &extractor{extractCreatedAt: extractCreatedAt, extractThumbnail: extractThumb}
+func NewExtractor() Extractor {
+	return &extractor{}
 }
 
-func (s extractor) Extract(pathsGroupedByDir map[string][]*fs.FileInfo, fileReader fs.FileReaderFn) <-chan *entity.PhotoWithThumb {
+func (s extractor) Extract(files []*fs.FileInfo, fileReader fs.FileReaderFn) <-chan *entity.PhotoWithThumb {
+	pathsGroupedByDir := fs.GroupByDir(files)
 	metadataStream := make(chan *entity.PhotoWithThumb, 100)
 	go func() {
 		defer close(metadataStream)
@@ -39,7 +36,7 @@ func (s extractor) Extract(pathsGroupedByDir map[string][]*fs.FileInfo, fileRead
 		for _, paths := range pathsGroupedByDir {
 			go func(ps []*fs.FileInfo) {
 				defer wg.Done()
-				s.extractMetadataDir(ps, metadataStream, fileReader)
+				extractMetadataDir(ps, metadataStream, fileReader)
 			}(paths)
 		}
 		wg.Wait()
@@ -47,7 +44,7 @@ func (s extractor) Extract(pathsGroupedByDir map[string][]*fs.FileInfo, fileRead
 	return metadataStream
 }
 
-func (s extractor) extractMetadataDir(photos []*fs.FileInfo, metadataStream chan<- *entity.PhotoWithThumb, fileReader fs.FileReaderFn) {
+func extractMetadataDir(photos []*fs.FileInfo, metadataStream chan<- *entity.PhotoWithThumb, fileReader fs.FileReaderFn) {
 	dirCreatedAt := time.Time{}
 	md := make([]*entity.PhotoWithThumb, 0, len(photos))
 	for _, ph := range photos {
@@ -57,7 +54,7 @@ func (s extractor) extractMetadataDir(photos []*fs.FileInfo, metadataStream chan
 		}
 		defer f.Close()
 
-		createdAt, err := s.extractCreatedAt(f)
+		createdAt, err := extractCreatedAt(f)
 		if err != nil {
 			log.Printf("can't extract created_at for path: %v: %v", ph.Path, err)
 		} else {
@@ -66,12 +63,12 @@ func (s extractor) extractMetadataDir(photos []*fs.FileInfo, metadataStream chan
 
 		createdAtMonth := time.Date(createdAt.Year(), createdAt.Month(), 1, 0, 0, 0, 0, time.UTC)
 		f.Seek(0, 0)
-		thumb, err := s.extractThumbnail(f)
+		thumb, err := extractThumb(f)
 		if err != nil {
 			log.Printf("can't extract thumbnail for path: %v: %v", ph.Path, err)
 		}
-		thumbnailName := localstorage.GenerateUniqueFileName("thumb", ph.Path, createdAt)
-		imgName := localstorage.GenerateUniqueFileName("orig", ph.Path, createdAt)
+		thumbnailName := fs.GenerateUniqueFileName("thumb", ph.Path, createdAt)
+		imgName := fs.GenerateUniqueFileName("orig", ph.Path, createdAt)
 		p := &entity.PhotoWithThumb{Photo: &entity.Photo{FileInfo: ph, Metadata: &entity.Metadata{Name: imgName, ThumbnailName: thumbnailName, CreatedAt: createdAt, CreatedAtMonth: createdAtMonth}}, Thumbnail: thumb}
 		md = append(md, p)
 	}

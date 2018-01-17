@@ -13,19 +13,20 @@ import (
 const dataChunkSize = 64 * 1024
 
 type Service interface {
-	Encrypt(dst io.Writer, encryptionKey string, plainDataReader io.Reader) error
-	Decrypt(dst io.Writer, encryptionKey string, encryptedDataReader io.Reader) error
+	Encrypt(dst io.Writer, plainDataReader io.Reader) error
+	Decrypt(dst io.Writer, encryptedDataReader io.Reader) error
 }
 
-func NewService() Service {
-	return &srv{}
+func NewService(encryptionKey string) Service {
+	return &srv{encryptionKey: encryptionKey}
 }
 
 type srv struct {
+	encryptionKey string
 }
 
-func (s *srv) Encrypt(dst io.Writer, encryptionKey string, plainDataReader io.Reader) error {
-	secretKeyBytes, err := hex.DecodeString(encryptionKey)
+func (s *srv) Encrypt(dst io.Writer, plainDataReader io.Reader) error {
+	secretKeyBytes, err := hex.DecodeString(s.encryptionKey)
 	if err != nil {
 		return err
 	}
@@ -58,8 +59,8 @@ func (s *srv) Encrypt(dst io.Writer, encryptionKey string, plainDataReader io.Re
 	return nil
 }
 
-func (s *srv) Decrypt(dst io.Writer, encryptionKey string, encryptedDataReader io.Reader) error {
-	secretKeyBytes, err := hex.DecodeString(encryptionKey)
+func (s *srv) Decrypt(dst io.Writer, encryptedDataReader io.Reader) error {
+	secretKeyBytes, err := hex.DecodeString(s.encryptionKey)
 	if err != nil {
 		return err
 	}

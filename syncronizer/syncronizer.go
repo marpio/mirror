@@ -36,7 +36,7 @@ func (s *Service) Execute(rootPath string, done <-chan interface{}) {
 		s.metadataStore.Delete(p.Path)
 	}
 
-	metadataStream := s.metadataextr.Extract(localstorage.GroupByDir(newAndChangedPhotos), s.localstrg.ReadFile)
+	metadataStream := s.metadataextr.Extract(newAndChangedPhotos, s.localstrg.ReadFile)
 	photosStream := remotestorage.UploadPhotos(metadataStream, s.localstrg.ReadFile, s.remotestrg)
 
 	for {

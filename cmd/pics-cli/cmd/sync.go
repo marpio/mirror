@@ -51,7 +51,7 @@ func runSync(dir string) {
 	dbPath := os.Getenv("IMG_DB")
 	ctx := context.Background()
 
-	remotestorage := b2.New(ctx, b2id, b2key, bucketName, encryptionKey, crypto.NewService())
+	remotestorage := b2.New(ctx, b2id, b2key, bucketName, crypto.NewService(encryptionKey))
 
 	appFs := afero.NewOsFs()
 	metadataStore := hashmap.New(appFs, dbPath)
@@ -66,7 +66,7 @@ func runSync(dir string) {
 	syncronizer := syncronizer.New(remotestorage,
 		metadataStore,
 		localFilesRepo,
-		metadata.NewExtractor(appFs))
+		metadata.NewExtractor())
 	syncronizer.Execute(dir, done)
 
 	dbFileReader, err := localFilesRepo.ReadFile(dbPath)

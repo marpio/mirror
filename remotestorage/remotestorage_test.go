@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"io"
 	"testing"
+
+	"github.com/marpio/img-store/crypto"
 )
 
 const encKey = "b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"
@@ -22,7 +24,7 @@ func (writeCloser) Close() error { return nil }
 
 func TestUploadDownload(t *testing.T) {
 	var b bytes.Buffer
-	s := Backend{ReadFn: func(p string) io.ReadCloser { return readCloser{bytes.NewReader(b.Bytes())} }, WriteFn: func(p string) io.WriteCloser { return writeCloser{&b} }, DeleteFn: nil, EncryptionKey: encKey}
+	s := Backend{ReadFn: func(p string) io.ReadCloser { return readCloser{bytes.NewReader(b.Bytes())} }, WriteFn: func(p string) io.WriteCloser { return writeCloser{&b} }, DeleteFn: nil, CryptoSrv: crypto.NewService(encKey)}
 	pic := []byte("picture bytes")
 
 	s.UploadEncrypted("pic.jpg", bytes.NewReader(pic))

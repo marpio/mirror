@@ -14,7 +14,7 @@ func TestEncrypt(t *testing.T) {
 		data[i] = 100
 	}
 
-	Encrypt(&b, encKey, bytes.NewReader(data[:]))
+	NewService(encKey).Encrypt(&b, bytes.NewReader(data[:]))
 	if bytes.Equal(b.Bytes(), data[:]) {
 		t.Error("Encrypt output should not be equal the input.")
 	}
@@ -26,10 +26,10 @@ func TestEncryptDecrypt(t *testing.T) {
 	for i := 0; i < 80000; i++ {
 		data[i] = 100
 	}
-
-	Encrypt(&b, encKey, bytes.NewReader(data[:]))
+	cs := NewService(encKey)
+	cs.Encrypt(&b, bytes.NewReader(data[:]))
 	var b2 bytes.Buffer
-	Decrypt(&b2, encKey, &b)
+	cs.Decrypt(&b2, &b)
 	if !bytes.Equal(b2.Bytes(), data[:]) {
 		t.Error("Encrypt - Decrypt error")
 	}

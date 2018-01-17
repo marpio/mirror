@@ -27,11 +27,10 @@ type WriterService interface {
 }
 
 type Backend struct {
-	ReadFn        func(string) io.ReadCloser
-	WriteFn       func(string) io.WriteCloser
-	DeleteFn      func(string) error
-	EncryptionKey string
-	CryptoSrv     crypto.Service
+	ReadFn    func(string) io.ReadCloser
+	WriteFn   func(string) io.WriteCloser
+	DeleteFn  func(string) error
+	CryptoSrv crypto.Service
 }
 
 func (b *Backend) DownloadDecrypted(dst io.Writer, fileName string) {
@@ -39,7 +38,7 @@ func (b *Backend) DownloadDecrypted(dst io.Writer, fileName string) {
 	//r.ConcurrentDownloads = downloads
 	defer r.Close()
 
-	err := b.CryptoSrv.Decrypt(dst, b.EncryptionKey, r)
+	err := b.CryptoSrv.Decrypt(dst, r)
 	if err != nil {
 		log.Print(err)
 		panic(err)
@@ -48,7 +47,7 @@ func (b *Backend) DownloadDecrypted(dst io.Writer, fileName string) {
 
 func (b *Backend) UploadEncrypted(fileName string, reader io.Reader) error {
 	w := b.WriteFn(fileName)
-	b.CryptoSrv.Encrypt(w, b.EncryptionKey, reader)
+	b.CryptoSrv.Encrypt(w, reader)
 	if err := w.Close(); err != nil {
 		return err
 	}
