@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strconv"
 	"time"
 
@@ -34,14 +33,15 @@ func main() {
 	username := os.Getenv("PICS_USERNAME")
 	password := os.Getenv("PICS_PASSWORD")
 	ctx := context.Background()
-	remotestorage := b2.New(ctx, b2id, b2key, bucketName, crypto.NewService(encryptionKey))
+	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
+	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
 	var appFs afero.Fs = afero.NewOsFs()
-	metadataStore, err := createMetadataStore(appFs, dbPath, remotestorage)
+	metadataStore, err := createMetadataStore(appFs, dbPath, rs)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	router := configureRouter(metadataStore, remotestorage, dbPath)
+	router := configureRouter(metadataStore, rs, dbPath)
 	http.Handle("/", httpauth.SimpleBasicAuth(username, password)(router))
 
 	http.ListenAndServe(":5000", nil)
@@ -64,20 +64,8 @@ func configureRouter(metadataStore metadatastore.ReaderService, remotestorage re
 	return r
 }
 
-func createMetadataStore(fs afero.Fs, imgDBPath string, remotestorage remotestorage.ReaderService) (metadatastore.Service, error) {
-	f, err := fs.Create(filepath.Base(imgDBPath))
-
-	if err != nil {
-		log.Print(err)
-		return nil, err
-	}
-	remotestorage.DownloadDecrypted(f, filepath.Base(imgDBPath))
-	if err := f.Close(); err != nil {
-		log.Print(err)
-		return nil, err
-	}
-
-	metadataStore := hashmap.New(fs, imgDBPath)
+func createMetadataStore(fs afero.Fs, imgDBPath string, remotestorage remotestorage.Service) (metadatastore.Service, error) {
+	metadataStore := hashmap.New(remotestorage, imgDBPath)
 	return metadataStore, nil
 }
 

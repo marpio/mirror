@@ -35,7 +35,8 @@ func (s *srv) Encrypt(dst io.Writer, plainDataReader io.Reader) error {
 	chunkSize := dataChunkSize
 	buf := make([]byte, 0, chunkSize)
 	for {
-		n, err := plainDataReader.Read(buf[:cap(buf)])
+		n, err := io.ReadAtLeast(plainDataReader, buf[0:cap(buf)], chunkSize)
+		//n, err := plainDataReader.Read(buf[0:cap(buf)])
 		buf = buf[:n]
 		if n == 0 {
 			if err == nil {
@@ -46,7 +47,7 @@ func (s *srv) Encrypt(dst io.Writer, plainDataReader io.Reader) error {
 			}
 			log.Fatal(err)
 		}
-		if err != nil && err != io.EOF {
+		if err != nil && err != io.ErrUnexpectedEOF {
 			return err
 		}
 		nonce, err := genNonce()
@@ -71,7 +72,7 @@ func (s *srv) Decrypt(dst io.Writer, encryptedDataReader io.Reader) error {
 	chunkSize := 24 + dataChunkSize + 16
 	buf := make([]byte, 0, chunkSize)
 	for {
-		n, err := encryptedDataReader.Read(buf[:cap(buf)])
+		n, err := encryptedDataReader.Read(buf[0:cap(buf)])
 		buf = buf[:n]
 		if n == 0 {
 			if err == nil {

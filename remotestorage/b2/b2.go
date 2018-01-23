@@ -6,30 +6,43 @@ import (
 	"log"
 
 	"github.com/kurin/blazer/b2"
-	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/remotestorage"
 )
 
-func New(ctx context.Context, b2id, b2key, bucketName, encryptKey string, cryptoSrv crypto.Service) remotestorage.Service {
-	bucket := newB2Bucket(ctx, b2id, b2key, bucketName)
+type b2Backend struct {
+	ctx    context.Context
+	bucket *b2.Bucket
+}
 
-	r := func(fileName string) io.ReadCloser {
-		rd := bucket.Object(fileName).NewReader(ctx)
-		return rd
+func New(ctx context.Context, b2id, b2key, bucketName string) remotestorage.Backend {
+	bucket := newB2Bucket(ctx, b2id, b2key, bucketName)
+	return &b2Backend{ctx: ctx, bucket: bucket}
+}
+
+func (b *b2Backend) Read(fileName string) io.ReadCloser {
+	rd := b.bucket.Object(fileName).NewReader(b.ctx)
+	return rd
+}
+
+func (b *b2Backend) Write(fileName string) io.WriteCloser {
+	obj := b.bucket.Object(fileName)
+	wr := obj.NewWriter(b.ctx)
+	return wr
+}
+
+func (b *b2Backend) Delete(fileName string) error {
+	if err := b.bucket.Object(fileName).Delete(b.ctx); err != nil {
+		return err
 	}
-	w := func(fileName string) io.WriteCloser {
-		obj := bucket.Object(fileName)
-		wr := obj.NewWriter(ctx)
-		return wr
+	return nil
+}
+
+func (b *b2Backend) Exists(fileName string) bool {
+	_, err := b.bucket.Object(fileName).Attrs(b.ctx)
+	if err != nil {
+		return b2.IsNotExist(err)
 	}
-	d := func(fileName string) error {
-		if err := bucket.Object(fileName).Delete(ctx); err != nil {
-			return err
-		}
-		return nil
-	}
-	b := remotestorage.Backend{ReadFn: r, WriteFn: w, DeleteFn: d, EncryptionKey: encryptKey, CryptoSrv: cryptoSrv}
-	return &b
+	return true
 }
 
 func newB2Bucket(ctx context.Context, b2id string, b2key string, bucketName string) *b2.Bucket {

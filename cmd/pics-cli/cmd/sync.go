@@ -21,6 +21,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/marpio/img-store/remotestorage"
+
 	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/localstorage"
 	"github.com/marpio/img-store/metadata"
@@ -49,21 +51,21 @@ func runSync(dir string) {
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
 	dbPath := os.Getenv("IMG_DB")
-	ctx := context.Background()
-
-	remotestorage := b2.New(ctx, b2id, b2key, bucketName, crypto.NewService(encryptionKey))
-
-	appFs := afero.NewOsFs()
-	metadataStore := hashmap.New(appFs, dbPath)
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	done := wrapChan(sigs)
 	defer close(sigs)
 	defer close(done)
+	ctx := context.Background()
 
+	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
+	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
+
+	appFs := afero.NewOsFs()
+	metadataStore := hashmap.New(rs, dbPath)
 	localFilesRepo := localstorage.NewService(appFs)
-	syncronizer := syncronizer.New(remotestorage,
+	syncronizer := syncronizer.New(rs,
 		metadataStore,
 		localFilesRepo,
 		metadata.NewExtractor())
@@ -73,7 +75,7 @@ func runSync(dir string) {
 	if err != nil {
 		log.Print("Error uploading DB")
 	}
-	if err := remotestorage.UploadEncrypted(dbPath, dbFileReader); err != nil {
+	if err := rs.UploadEncrypted(dbPath, dbFileReader); err != nil {
 		log.Print("Error uploading DB")
 	}
 }

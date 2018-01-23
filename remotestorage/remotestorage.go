@@ -19,6 +19,7 @@ type Service interface {
 
 type ReaderService interface {
 	DownloadDecrypted(dst io.Writer, fileName string)
+	Exists(fileName string) bool
 }
 
 type WriterService interface {
@@ -26,36 +27,57 @@ type WriterService interface {
 	Delete(fileName string) error
 }
 
-type Backend struct {
-	ReadFn    func(string) io.ReadCloser
-	WriteFn   func(string) io.WriteCloser
-	DeleteFn  func(string) error
-	CryptoSrv crypto.Service
+type Backend interface {
+	Read(string) io.ReadCloser
+	Write(string) io.WriteCloser
+	Delete(string) error
+	Exists(string) bool
 }
 
-func (b *Backend) DownloadDecrypted(dst io.Writer, fileName string) {
-	r := b.ReadFn(fileName)
+//type Backend struct {
+//	ReadFn    func(string) io.ReadCloser
+//	WriteFn   func(string) io.WriteCloser
+//	DeleteFn  func(string) error
+//	ExistsFn  func(string) bool
+//	CryptoSrv crypto.Service
+//}
+
+func New(b Backend, c crypto.Service) Service {
+	return &rs{backend: b, cryptoSrv: c}
+}
+
+type rs struct {
+	backend   Backend
+	cryptoSrv crypto.Service
+}
+
+func (b *rs) DownloadDecrypted(dst io.Writer, fileName string) {
+	r := b.backend.Read(fileName)
 	//r.ConcurrentDownloads = downloads
 	defer r.Close()
 
-	err := b.CryptoSrv.Decrypt(dst, r)
+	err := b.cryptoSrv.Decrypt(dst, r)
 	if err != nil {
 		log.Print(err)
 		panic(err)
 	}
 }
 
-func (b *Backend) UploadEncrypted(fileName string, reader io.Reader) error {
-	w := b.WriteFn(fileName)
-	b.CryptoSrv.Encrypt(w, reader)
+func (b *rs) Exists(fileName string) bool {
+	return b.backend.Exists(fileName)
+}
+
+func (b *rs) UploadEncrypted(fileName string, reader io.Reader) error {
+	w := b.backend.Write(fileName)
+	b.cryptoSrv.Encrypt(w, reader)
 	if err := w.Close(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *Backend) Delete(fileName string) error {
-	if err := b.DeleteFn(fileName); err != nil {
+func (b *rs) Delete(fileName string) error {
+	if err := b.backend.Delete(fileName); err != nil {
 		return err
 	}
 	return nil

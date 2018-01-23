@@ -4,6 +4,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/marpio/img-store/crypto"
+	"github.com/marpio/img-store/remotestorage"
+	"github.com/marpio/img-store/remotestorage/filesystem"
+
 	"github.com/marpio/img-store/entity"
 	"github.com/marpio/img-store/fs"
 	"github.com/marpio/img-store/metadatastore"
@@ -81,7 +85,7 @@ func TestPersist(t *testing.T) {
 
 	s.Persist()
 	dbPath := "entity.db"
-	s2 := New(afs, dbPath)
+	s2 := setup2(afs, dbPath)
 	r, _ := s2.GetAll()
 	if len(r) != 1 {
 		t.Errorf("Expected one result, got: %v", len(r))
@@ -97,7 +101,7 @@ func TestReload(t *testing.T) {
 
 	afs.Rename(dbPath, "photo2.db")
 
-	s2 := New(afs, dbPath)
+	s2 := setup2(afs, dbPath)
 	r, _ := s2.GetAll()
 	if len(r) != 0 {
 		t.Errorf("Expected 0 results, got: %v", len(r))
@@ -112,8 +116,16 @@ func TestReload(t *testing.T) {
 }
 
 func setup() (metadatastore.Service, afero.Fs) {
-	dbPath := "entity.db"
 	afs := afero.NewMemMapFs()
-	s := New(afs, dbPath)
+	b := remotestorage.New(filesystem.New(afs), crypto.NewService("b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"))
+	dbPath := "entity.db"
+
+	s := New(b, dbPath)
 	return s, afs
+}
+
+func setup2(afs afero.Fs, dbPath string) metadatastore.Service {
+	b := remotestorage.New(filesystem.New(afs), crypto.NewService("b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"))
+	s := New(b, dbPath)
+	return s
 }

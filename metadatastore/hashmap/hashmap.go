@@ -2,50 +2,54 @@ package hashmap
 
 import (
 	"encoding/gob"
+	"fmt"
+	"io"
+	"log"
 	"sort"
 	"time"
 
 	"github.com/marpio/img-store/metadatastore"
+	"github.com/marpio/img-store/remotestorage"
 
 	"github.com/marpio/img-store/entity"
-	"github.com/spf13/afero"
 )
 
 type hashmapStore struct {
-	fs         afero.Fs
+	rs         remotestorage.Service
 	data       map[string]*entity.Photo
-	dbFilePath string
+	dbFileName string
 }
 
 type timeSlice []time.Time
 
-func New(fs afero.Fs, dbFilePath string) metadatastore.Service {
+func New(rs remotestorage.Service, dbFileName string) metadatastore.Service {
 	var decodedMetadata map[string]*entity.Photo
-	exists, err := afero.Exists(fs, dbFilePath)
-	if err != nil || !exists {
+	exists := rs.Exists(dbFileName)
+	log.Printf("db: %v", dbFileName)
+	if !exists {
 		decodedMetadata = make(map[string]*entity.Photo)
 	} else {
-		f, err := fs.Open(dbFilePath)
-		if err != nil {
-			return nil
-		}
-		defer f.Close()
-		dec := gob.NewDecoder(f)
+		pr, pw := io.Pipe()
+		go func() {
+			defer pw.Close()
+			rs.DownloadDecrypted(pw, dbFileName)
+		}()
+		dec := gob.NewDecoder(pr)
 		if err := dec.Decode(&decodedMetadata); err != nil {
 			decodedMetadata = make(map[string]*entity.Photo)
 		}
 	}
-	return &hashmapStore{fs: fs, data: decodedMetadata, dbFilePath: dbFilePath}
+	return &hashmapStore{rs: rs, data: decodedMetadata, dbFileName: dbFileName}
 }
 
 func (datastore *hashmapStore) Reload() error {
 	var decodedMetadata map[string]*entity.Photo
-	f, err := datastore.fs.Open(datastore.dbFilePath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	dec := gob.NewDecoder(f)
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		datastore.rs.DownloadDecrypted(pw, datastore.dbFileName)
+	}()
+	dec := gob.NewDecoder(pr)
 	if err := dec.Decode(&decodedMetadata); err != nil {
 		datastore.data = make(map[string]*entity.Photo)
 		return err
@@ -86,14 +90,16 @@ func (datastore *hashmapStore) Add(photo *entity.Photo) error {
 }
 
 func (datastore *hashmapStore) Persist() error {
-	f, err := datastore.fs.Create(datastore.dbFilePath)
-	if err != nil {
-		return err
+	pr, pw := io.Pipe()
+	go func() {
+		defer pw.Close()
+		gob.NewEncoder(pw).Encode(datastore.data)
+	}()
+	if err := datastore.rs.UploadEncrypted(datastore.dbFileName, pr); err != nil {
+		return fmt.Errorf("error persisting db: %v", err)
 	}
-	defer f.Close()
-	e := gob.NewEncoder(f)
-	if err := e.Encode(datastore.data); err != nil {
-		return err
+	if err := pr.Close(); err != nil {
+		return fmt.Errorf("error closing reader: %v", err)
 	}
 	return nil
 }
