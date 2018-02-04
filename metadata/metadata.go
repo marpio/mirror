@@ -50,12 +50,13 @@ func (s extractor) Extract(ctx context.Context, files []*domain.FileInfo) <-chan
 func (s extractor) extractMetadataDir(ctx context.Context, metadataStream chan<- *domain.Photo, photos []*domain.FileInfo) {
 	dirCreatedAt := time.Time{}
 	md := make([]*domain.Photo, 0, len(photos))
+loop:
 	for _, ph := range photos {
 		select {
 		case <-ctx.Done():
-			break
+			break loop
 		default:
-			f, err := s.rd.NewReadSeeker(ph.FilePath)
+			f, err := s.rd.NewReadSeeker(ctx, ph.FilePath)
 			if err != nil {
 				log.Printf("error opening file %v: %v", ph.FilePath, err)
 			}

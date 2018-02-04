@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/localstorage"
@@ -65,11 +66,14 @@ func runSync(dir string) {
 			}
 		}
 	}()
+
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
 	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
 
 	appFs := afero.NewOsFs()
-	repo, err := hashmap.New(rs, dbPath)
+	c, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	repo, err := hashmap.New(c, rs, dbPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error creating metadata repository: %v", err)
 		os.Exit(-1)

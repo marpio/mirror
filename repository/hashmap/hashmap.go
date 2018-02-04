@@ -1,12 +1,12 @@
 package hashmap
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
 
 	"github.com/marpio/img-store/domain"
-	"github.com/marpio/img-store/repository"
 )
 
 type item struct {
@@ -39,13 +39,13 @@ type hashmapStore struct {
 	filename string
 }
 
-func New(rs domain.Storage, filename string) (repository.Service, error) {
+func New(ctx context.Context, rs domain.Storage, filename string) (domain.MetadataRepo, error) {
 	var decodedMetadata M
-	exists := rs.Exists(filename)
+	exists := rs.Exists(ctx, filename)
 	if !exists {
 		decodedMetadata = make(M)
 	} else {
-		r, err := rs.NewReader(filename)
+		r, err := rs.NewReader(ctx, filename)
 		if err != nil {
 			return nil, err
 		}
@@ -58,9 +58,9 @@ func New(rs domain.Storage, filename string) (repository.Service, error) {
 	return &hashmapStore{rs: rs, data: decodedMetadata, filename: filename}, nil
 }
 
-func (s *hashmapStore) Reload() error {
+func (s *hashmapStore) Reload(ctx context.Context) error {
 	var decodedMetadata M
-	r, err := s.rs.NewReader(s.filename)
+	r, err := s.rs.NewReader(ctx, s.filename)
 	if err != nil {
 		return err
 	}
@@ -131,8 +131,8 @@ func (s *hashmapStore) Add(it domain.Item) error {
 	return nil
 }
 
-func (s *hashmapStore) Persist() error {
-	w := s.rs.NewWriter(s.filename)
+func (s *hashmapStore) Persist(ctx context.Context) error {
+	w := s.rs.NewWriter(ctx, s.filename)
 	defer w.Close()
 	en := json.NewEncoder(w)
 	en.SetIndent("", "    ")

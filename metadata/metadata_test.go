@@ -12,6 +12,8 @@ import (
 	"github.com/spf13/afero"
 )
 
+var ctx context.Context = context.Background()
+
 func TestThumbnail(t *testing.T) {
 	p := "../test/sample.jpg"
 	r, _ := os.Open(p)
@@ -72,6 +74,6 @@ type storageReadSeekerMock struct {
 func NewStorageReadSeeker(fs afero.Fs) *storageReadSeekerMock {
 	return &storageReadSeekerMock{fs: fs}
 }
-func (m *storageReadSeekerMock) NewReadSeeker(path string) (domain.ReadCloseSeeker, error) {
+func (m *storageReadSeekerMock) NewReadSeeker(ctx context.Context, path string) (domain.ReadCloseSeeker, error) {
 	return m.fs.Open(path)
 }

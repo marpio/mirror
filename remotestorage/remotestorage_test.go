@@ -2,6 +2,7 @@ package remotestorage
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -14,6 +15,8 @@ import (
 )
 
 const encKey = "b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"
+
+var ctx context.Context = context.Background()
 
 type readCloser struct {
 	io.Reader
@@ -41,12 +44,12 @@ func TestWriteRead(t *testing.T) {
 		for i := 0; i < s; i++ {
 			data[i] = byte(rand.Intn(256))
 		}
-		w := rs.NewWriter(path1)
+		w := rs.NewWriter(ctx, path1)
 
 		io.Copy(w, bytes.NewReader(data[:]))
 		w.Close()
 
-		r, _ := rs.NewReader(path1)
+		r, _ := rs.NewReader(ctx, path1)
 		var dst bytes.Buffer
 		_, err := io.Copy(&dst, r)
 		if err != nil {

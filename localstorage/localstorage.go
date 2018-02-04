@@ -1,6 +1,7 @@
 package localstorage
 
 import (
+	"context"
 	"io"
 	"log"
 	"os"
@@ -19,11 +20,11 @@ func NewService(fs afero.Fs) domain.LocalStorage {
 	return &srv{fs: fs}
 }
 
-func (repo *srv) NewReader(path string) (io.ReadCloser, error) {
+func (repo *srv) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
 	return repo.fs.Open(path)
 }
 
-func (repo *srv) NewReadSeeker(path string) (domain.ReadCloseSeeker, error) {
+func (repo *srv) NewReadSeeker(ctx context.Context, path string) (domain.ReadCloseSeeker, error) {
 	return repo.fs.Open(path)
 }
 

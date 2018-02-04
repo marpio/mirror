@@ -1,6 +1,7 @@
 package remotestorage
 
 import (
+	"context"
 	"io"
 
 	"github.com/marpio/img-store/crypto"
@@ -26,9 +27,9 @@ type reader struct {
 	crpt    crypto.Service
 }
 
-func (b *rs) NewReader(path string) (io.ReadCloser, error) {
+func (b *rs) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
 	bufSize := b.crpt.NonceSize() + b.crpt.BlockSize() + b.crpt.Overhead()
-	rd, err := b.backend.NewReader(path)
+	rd, err := b.backend.NewReader(ctx, path)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +87,8 @@ type writer struct {
 	crpt crypto.Service
 }
 
-func (b *rs) NewWriter(path string) io.WriteCloser {
-	return &writer{wr: b.backend.NewWriter(path), buf: make([]byte, b.crpt.BlockSize()), crpt: b.crpt}
+func (b *rs) NewWriter(ctx context.Context, path string) io.WriteCloser {
+	return &writer{wr: b.backend.NewWriter(ctx, path), buf: make([]byte, b.crpt.BlockSize()), crpt: b.crpt}
 }
 
 // Available returns how many bytes are unused in the buffer.
@@ -147,12 +148,12 @@ func (b *writer) Close() error {
 	return b.flush()
 }
 
-func (b *rs) Exists(fileName string) bool {
-	return b.backend.Exists(fileName)
+func (b *rs) Exists(ctx context.Context, fileName string) bool {
+	return b.backend.Exists(ctx, fileName)
 }
 
-func (b *rs) Delete(fileName string) error {
-	if err := b.backend.Delete(fileName); err != nil {
+func (b *rs) Delete(ctx context.Context, fileName string) error {
+	if err := b.backend.Delete(ctx, fileName); err != nil {
 		return err
 	}
 	return nil

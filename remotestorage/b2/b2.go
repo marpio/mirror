@@ -19,25 +19,25 @@ func New(ctx context.Context, b2id, b2key, bucketName string) domain.Storage {
 	return &b2Backend{ctx: ctx, bucket: bucket}
 }
 
-func (b *b2Backend) NewReader(fileName string) (io.ReadCloser, error) {
-	rd := b.bucket.Object(fileName).NewReader(b.ctx)
+func (b *b2Backend) NewReader(ctx context.Context, fileName string) (io.ReadCloser, error) {
+	rd := b.bucket.Object(fileName).NewReader(ctx)
 	return rd, nil
 }
 
-func (b *b2Backend) NewWriter(fileName string) io.WriteCloser {
-	wr := b.bucket.Object(fileName).NewWriter(b.ctx)
+func (b *b2Backend) NewWriter(ctx context.Context, fileName string) io.WriteCloser {
+	wr := b.bucket.Object(fileName).NewWriter(ctx)
 	return wr
 }
 
-func (b *b2Backend) Delete(fileName string) error {
-	if err := b.bucket.Object(fileName).Delete(b.ctx); err != nil {
+func (b *b2Backend) Delete(ctx context.Context, fileName string) error {
+	if err := b.bucket.Object(fileName).Delete(ctx); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (b *b2Backend) Exists(fileName string) bool {
-	_, err := b.bucket.Object(fileName).Attrs(b.ctx)
+func (b *b2Backend) Exists(ctx context.Context, fileName string) bool {
+	_, err := b.bucket.Object(fileName).Attrs(ctx)
 	if err != nil {
 		return b2.IsNotExist(err)
 	}

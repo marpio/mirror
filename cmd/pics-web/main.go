@@ -16,7 +16,6 @@ import (
 	"github.com/marpio/img-store/domain"
 	"github.com/marpio/img-store/remotestorage"
 	"github.com/marpio/img-store/remotestorage/b2"
-	"github.com/marpio/img-store/repository"
 	"github.com/marpio/img-store/repository/hashmap"
 	"github.com/spf13/afero"
 )
@@ -33,21 +32,21 @@ func main() {
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
 	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
 	appFs := afero.NewOsFs()
-	metadataStore := createMetadataStore(appFs, dbPath, rs)
+	metadataStore := createMetadataStore(ctx, appFs, dbPath, rs)
 
-	router := configureRouter(metadataStore, rs, dbPath)
+	router := configureRouter(ctx, metadataStore, rs, dbPath)
 	http.Handle("/", httpauth.SimpleBasicAuth(username, password)(router))
 
 	http.ListenAndServe(":5000", nil)
 }
 
-func configureRouter(metadataStore repository.ReaderService, remotestorage domain.StorageReader, imgDBPath string) *mux.Router {
+func configureRouter(ctx context.Context, metadataStore domain.MetadataRepoReader, remotestorage domain.StorageReader, imgDBPath string) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
 	r.HandleFunc("/dirs/{dir}", dirHandler(metadataStore))
-	r.HandleFunc("/files/{id}", fileHandler(remotestorage))
+	r.HandleFunc("/files/{id}", fileHandler(ctx, remotestorage))
 	r.HandleFunc("/reloaddb", func(w http.ResponseWriter, r *http.Request) {
-		err := metadataStore.Reload()
+		err := metadataStore.Reload(ctx)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -58,8 +57,8 @@ func configureRouter(metadataStore repository.ReaderService, remotestorage domai
 	return r
 }
 
-func createMetadataStore(fs afero.Fs, imgDBPath string, remotestorage domain.Storage) repository.ReaderService {
-	repo, err := hashmap.New(remotestorage, imgDBPath)
+func createMetadataStore(ctx context.Context, fs afero.Fs, imgDBPath string, remotestorage domain.Storage) domain.MetadataRepoReader {
+	repo, err := hashmap.New(ctx, remotestorage, imgDBPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error creating metadata repository: %v", err)
 		os.Exit(-1)
@@ -67,7 +66,7 @@ func createMetadataStore(fs afero.Fs, imgDBPath string, remotestorage domain.Sto
 	return repo
 }
 
-func mainPageHandler(metadataStore repository.ReaderService) func(w http.ResponseWriter, r *http.Request) {
+func mainPageHandler(metadataStore domain.MetadataRepoReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dirs, err := metadataStore.GetDirs()
 		if err != nil {
@@ -92,7 +91,7 @@ func mainPageHandler(metadataStore repository.ReaderService) func(w http.Respons
 	}
 }
 
-func dirHandler(metadataStore repository.ReaderService) func(w http.ResponseWriter, r *http.Request) {
+func dirHandler(metadataStore domain.MetadataRepoReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		dir := vars["dir"]
@@ -116,12 +115,13 @@ func dirHandler(metadataStore repository.ReaderService) func(w http.ResponseWrit
 	}
 }
 
-func fileHandler(remotestorage domain.StorageReader) func(w http.ResponseWriter, r *http.Request) {
+func fileHandler(ctx context.Context, remotestorage domain.StorageReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		id := vars["id"]
-
-		rd, err := remotestorage.NewReader(id)
+		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		defer cancel()
+		rd, err := remotestorage.NewReader(ctx, id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return

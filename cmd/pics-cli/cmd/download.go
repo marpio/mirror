@@ -20,6 +20,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"time"
 
 	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/remotestorage"
@@ -39,12 +40,12 @@ var downloadCmd = &cobra.Command{
 func runDownload(localFilePath, remoteFilePath string) {
 	l := initLog()
 	defer l.Close()
+	ctx := context.Background()
 
 	encryptionKey := os.Getenv("ENCR_KEY")
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
-	ctx := context.Background()
 
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
 	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
@@ -55,7 +56,9 @@ func runDownload(localFilePath, remoteFilePath string) {
 		log.Fatal(err)
 	}
 	defer f.Close()
-	r, err := rs.NewReader(remoteFilePath)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	r, err := rs.NewReader(ctx, remoteFilePath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error opening file on remote storage: %v", err)
 		os.Exit(-1)

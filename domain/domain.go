@@ -12,20 +12,20 @@ import (
 type Storage interface {
 	StorageReader
 	StorageWriter
-	Exists(fileName string) bool
+	Exists(ctx context.Context, path string) bool
 }
 
 type StorageReader interface {
-	NewReader(path string) (io.ReadCloser, error)
+	NewReader(ctx context.Context, path string) (io.ReadCloser, error)
 }
 
 type StorageReadSeeker interface {
-	NewReadSeeker(path string) (ReadCloseSeeker, error)
+	NewReadSeeker(ctx context.Context, path string) (ReadCloseSeeker, error)
 }
 
 type StorageWriter interface {
-	NewWriter(string) io.WriteCloser
-	Delete(fileName string) error
+	NewWriter(ctx context.Context, path string) io.WriteCloser
+	Delete(ctx context.Context, path string) error
 }
 
 type LocalStorage interface {
@@ -37,6 +37,26 @@ type LocalStorage interface {
 type ReadCloseSeeker interface {
 	io.ReadCloser
 	io.Seeker
+}
+
+type MetadataRepo interface {
+	MetadataRepoReader
+	MetadataRepoWriter
+}
+
+type MetadataRepoWriter interface {
+	Add(item Item) error
+	Delete(id string) error
+	Persist(ctx context.Context) error
+}
+
+type MetadataRepoReader interface {
+	Exists(id string) (bool, error)
+	GetModTime(id string) (string, error)
+	GetByDir(name string) ([]Item, error)
+	GetByDirAndId(dir, id string) (Item, error)
+	GetDirs() ([]string, error)
+	Reload(ctx context.Context) error
 }
 
 type Extractor interface {

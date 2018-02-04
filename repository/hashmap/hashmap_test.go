@@ -1,6 +1,7 @@
 package hashmap
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -9,9 +10,10 @@ import (
 	"github.com/marpio/img-store/remotestorage/filesystem"
 
 	"github.com/marpio/img-store/domain"
-	"github.com/marpio/img-store/repository"
 	"github.com/spf13/afero"
 )
+
+var ctx context.Context = context.Background()
 
 func TestExists(t *testing.T) {
 	s, _ := setup()
@@ -75,7 +77,7 @@ func TestPersist(t *testing.T) {
 	p1 := &domain.Photo{FileInfo: &domain.FileInfo{FilePath: p}, Metadata: &domain.Metadata{CreatedAt: m}}
 	s.Add(p1)
 
-	s.Persist()
+	s.Persist(ctx)
 	dbPath := "domain.db"
 	s2 := setup2(afs, dbPath)
 	exists, _ := s2.Exists(p1.ID())
@@ -91,7 +93,7 @@ func TestReload(t *testing.T) {
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 	p1 := &domain.Photo{FileInfo: &domain.FileInfo{FilePath: p}, Metadata: &domain.Metadata{CreatedAt: m}}
 	s.Add(p1)
-	s.Persist()
+	s.Persist(ctx)
 
 	afs.Rename(dbPath, "photo2.db")
 
@@ -102,24 +104,24 @@ func TestReload(t *testing.T) {
 	}
 
 	afs.Rename("photo2.db", dbPath)
-	s2.Reload()
+	s2.Reload(ctx)
 	exists, _ = s2.Exists(p1.ID())
 	if !exists {
 		t.Error("expected to find one item")
 	}
 }
 
-func setup() (repository.Service, afero.Fs) {
+func setup() (domain.MetadataRepo, afero.Fs) {
 	afs := afero.NewMemMapFs()
 	b := remotestorage.New(filesystem.New(afs), crypto.NewService("b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"))
 	dbPath := "domain.db"
 
-	s, _ := New(b, dbPath)
+	s, _ := New(ctx, b, dbPath)
 	return s, afs
 }
 
-func setup2(afs afero.Fs, dbPath string) repository.Service {
+func setup2(afs afero.Fs, dbPath string) domain.MetadataRepo {
 	b := remotestorage.New(filesystem.New(afs), crypto.NewService("b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"))
-	s, _ := New(b, dbPath)
+	s, _ := New(ctx, b, dbPath)
 	return s
 }
