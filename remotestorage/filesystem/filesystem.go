@@ -3,7 +3,7 @@ package filesystem
 import (
 	"io"
 
-	"github.com/marpio/img-store/remotestorage"
+	"github.com/marpio/img-store/domain"
 	"github.com/spf13/afero"
 )
 
@@ -11,16 +11,16 @@ type fsBackend struct {
 	fs afero.Fs
 }
 
-func New(fs afero.Fs) remotestorage.Backend {
+func New(fs afero.Fs) domain.Storage {
 	return &fsBackend{fs: fs}
 }
 
-func (b *fsBackend) Read(fileName string) io.ReadCloser {
-	f, _ := b.fs.Open(fileName)
-	return f
+func (b *fsBackend) NewReader(fileName string) (io.ReadCloser, error) {
+	f, err := b.fs.Open(fileName)
+	return f, err
 }
 
-func (b *fsBackend) Write(fileName string) io.WriteCloser {
+func (b *fsBackend) NewWriter(fileName string) io.WriteCloser {
 	f, _ := b.fs.Create(fileName)
 	return f
 }

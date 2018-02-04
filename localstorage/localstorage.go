@@ -1,45 +1,40 @@
 package localstorage
 
 import (
+	"io"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
-	"time"
 
-	"github.com/marpio/img-store/fs"
+	"github.com/marpio/img-store/domain"
 	"github.com/spf13/afero"
 )
-
-type Service interface {
-	SearchFiles(rootPath string, filter func(string, time.Time) bool, fileExt ...string) []*fs.FileInfo
-	ReadFile(path string) (fs.File, error)
-}
-
-func NewService(fs afero.Fs) Service {
-	return &srv{fs: fs}
-}
 
 type srv struct {
 	fs afero.Fs
 }
 
-func (repo *srv) SearchFiles(rootPath string, filter func(string, time.Time) bool, fileExt ...string) []*fs.FileInfo {
-	return findFiles(repo.fs, rootPath, filter, fileExt...)
+func NewService(fs afero.Fs) domain.LocalStorage {
+	return &srv{fs: fs}
 }
 
-func (repo *srv) ReadFile(path string) (fs.File, error) {
+func (repo *srv) NewReader(path string) (io.ReadCloser, error) {
 	return repo.fs.Open(path)
 }
 
-func findFiles(afs afero.Fs, rootPath string, predicate func(string, time.Time) bool, fileExt ...string) []*fs.FileInfo {
-	files := make([]*fs.FileInfo, 0)
+func (repo *srv) NewReadSeeker(path string) (domain.ReadCloseSeeker, error) {
+	return repo.fs.Open(path)
+}
 
-	err := afero.Walk(afs, rootPath, func(path string, fi os.FileInfo, err error) error {
+func (repo *srv) SearchFiles(rootPath string, filter func(*domain.FileInfo) bool, fileExt ...string) []*domain.FileInfo {
+	files := make([]*domain.FileInfo, 0)
+	err := afero.Walk(repo.fs, rootPath, func(path string, fi os.FileInfo, err error) error {
 
 		if err != nil {
 			log.Printf("Error while walking the directory structure: %v", err)
 		}
-		isDir, err := afero.IsDir(afs, path)
+		isDir, err := afero.IsDir(repo.fs, path)
 
 		if err != nil {
 			return err
@@ -55,10 +50,9 @@ func findFiles(afs afero.Fs, rootPath string, predicate func(string, time.Time) 
 			}
 		}
 		if hasExt {
-			modTime := fi.ModTime()
-			finf := &fs.FileInfo{Path: path, ModTime: fi.ModTime()}
+			finf := &domain.FileInfo{FilePath: path, FileModTime: fi.ModTime()}
 
-			if predicate(path, modTime) {
+			if filter(finf) {
 				files = append(files, finf)
 			}
 		}
@@ -68,4 +62,25 @@ func findFiles(afs afero.Fs, rootPath string, predicate func(string, time.Time) 
 		log.Fatalf(err.Error())
 	}
 	return files
+}
+
+func GenerateUniqueFileName(prefix string, id string) string {
+	imgFileName := prefix + "_" + id
+	return imgFileName
+}
+
+func GroupByDir(files []*domain.FileInfo) map[string][]*domain.FileInfo {
+	filesGroupedByDir := make(map[string][]*domain.FileInfo)
+	for _, p := range files {
+		dir := filepath.Dir(p.FilePath)
+		if v, ok := filesGroupedByDir[dir]; ok {
+			v = append(v, p)
+			filesGroupedByDir[dir] = v
+		} else {
+			ps := make([]*domain.FileInfo, 0)
+			ps = append(ps, p)
+			filesGroupedByDir[dir] = ps
+		}
+	}
+	return filesGroupedByDir
 }

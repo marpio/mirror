@@ -3,74 +3,79 @@ package metadata
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"image/jpeg"
 	"io"
 	"log"
 	"sync"
 	"time"
 
-	"github.com/marpio/img-store/entity"
-	"github.com/marpio/img-store/fs"
+	"github.com/marpio/img-store/domain"
+	"github.com/marpio/img-store/localstorage"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-type Extractor interface {
-	Extract(files []*fs.FileInfo, fileReader fs.FileReaderFn) <-chan *entity.PhotoWithThumb
-}
-
 type extractor struct {
+	rd domain.StorageReadSeeker
 }
 
-func NewExtractor() Extractor {
-	return &extractor{}
+func NewExtractor(rd domain.StorageReadSeeker) domain.Extractor {
+	return &extractor{rd: rd}
 }
 
-func (s extractor) Extract(files []*fs.FileInfo, fileReader fs.FileReaderFn) <-chan *entity.PhotoWithThumb {
-	pathsGroupedByDir := fs.GroupByDir(files)
-	metadataStream := make(chan *entity.PhotoWithThumb, 100)
+func (s extractor) Extract(ctx context.Context, files []*domain.FileInfo) <-chan *domain.Photo {
+	pathsGroupedByDir := localstorage.GroupByDir(files)
+	metadataStream := make(chan *domain.Photo, 100)
 	go func() {
 		defer close(metadataStream)
 		var wg sync.WaitGroup
 		wg.Add(len(pathsGroupedByDir))
 		for _, paths := range pathsGroupedByDir {
-			go func(ps []*fs.FileInfo) {
-				defer wg.Done()
-				extractMetadataDir(ps, metadataStream, fileReader)
-			}(paths)
+			select {
+			case <-ctx.Done():
+				break
+			default:
+				go func(ps []*domain.FileInfo) {
+					defer wg.Done()
+					s.extractMetadataDir(ctx, metadataStream, ps)
+				}(paths)
+			}
 		}
 		wg.Wait()
 	}()
 	return metadataStream
 }
 
-func extractMetadataDir(photos []*fs.FileInfo, metadataStream chan<- *entity.PhotoWithThumb, fileReader fs.FileReaderFn) {
+func (s extractor) extractMetadataDir(ctx context.Context, metadataStream chan<- *domain.Photo, photos []*domain.FileInfo) {
 	dirCreatedAt := time.Time{}
-	md := make([]*entity.PhotoWithThumb, 0, len(photos))
+	md := make([]*domain.Photo, 0, len(photos))
 	for _, ph := range photos {
-		f, err := fileReader(ph.Path)
-		if err != nil {
-			log.Printf("error opening file %v: %v", ph.Path, err)
-		}
-		defer f.Close()
+		select {
+		case <-ctx.Done():
+			break
+		default:
+			f, err := s.rd.NewReadSeeker(ph.FilePath)
+			if err != nil {
+				log.Printf("error opening file %v: %v", ph.FilePath, err)
+			}
+			defer f.Close()
 
-		createdAt, err := extractCreatedAt(f)
-		if err != nil {
-			log.Printf("can't extract created_at for path: %v: %v", ph.Path, err)
-		} else {
-			dirCreatedAt = createdAt
-		}
+			createdAt, err := extractCreatedAt(f)
+			if err != nil {
+				log.Printf("can't extract created_at for path: %v: %v", ph.FilePath, err)
+			} else {
+				dirCreatedAt = createdAt
+			}
+			f.Seek(0, 0)
+			thumb, err := extractThumb(f)
+			if err != nil {
+				log.Printf("can't extract thumbnail for path: %v: %v", ph.FilePath, err)
+			}
 
-		createdAtMonth := time.Date(createdAt.Year(), createdAt.Month(), 1, 0, 0, 0, 0, time.UTC)
-		f.Seek(0, 0)
-		thumb, err := extractThumb(f)
-		if err != nil {
-			log.Printf("can't extract thumbnail for path: %v: %v", ph.Path, err)
+			p := &domain.Photo{FileInfo: ph, Metadata: &domain.Metadata{CreatedAt: createdAt, Thumbnail: thumb}}
+			md = append(md, p)
 		}
-		thumbnailName := fs.GenerateUniqueFileName("thumb", ph.Path, createdAt)
-		imgName := fs.GenerateUniqueFileName("orig", ph.Path, createdAt)
-		p := &entity.PhotoWithThumb{Photo: &entity.Photo{FileInfo: ph, Metadata: &entity.Metadata{Name: imgName, ThumbnailName: thumbnailName, CreatedAt: createdAt, CreatedAtMonth: createdAtMonth}}, Thumbnail: thumb}
-		md = append(md, p)
 	}
 	for _, meta := range md {
 		if (meta.CreatedAt == time.Time{}) {
@@ -80,7 +85,7 @@ func extractMetadataDir(photos []*fs.FileInfo, metadataStream chan<- *entity.Pho
 	}
 }
 
-func extractCreatedAt(r fs.File) (time.Time, error) {
+func extractCreatedAt(r domain.ReadCloseSeeker) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return time.Time{}, err

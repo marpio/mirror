@@ -3,9 +3,14 @@ package remotestorage
 import (
 	"bytes"
 	"io"
+	"io/ioutil"
+	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/marpio/img-store/crypto"
+	"github.com/marpio/img-store/remotestorage/filesystem"
+	"github.com/spf13/afero"
 )
 
 const encKey = "b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"
@@ -22,21 +27,51 @@ type writeCloser struct {
 
 func (writeCloser) Close() error { return nil }
 
-func TestUploadDownload(t *testing.T) {
-	var b bytes.Buffer
-	s := Backend{ReadFn: func(p string) io.ReadCloser { return readCloser{bytes.NewReader(b.Bytes())} }, WriteFn: func(p string) io.WriteCloser { return writeCloser{&b} }, DeleteFn: nil, CryptoSrv: crypto.NewService(encKey)}
-	pic := []byte("picture bytes")
+func TestWriteRead(t *testing.T) {
+	afs := afero.NewMemMapFs()
+	b := filesystem.New(afs)
+	c := crypto.NewService(encKey)
+	rs := New(b, c)
 
-	s.UploadEncrypted("pic.jpg", bytes.NewReader(pic))
-	expectedLen := 24 + 16 + len(pic)
-	actualLen := len(b.Bytes())
-	if actualLen != expectedLen {
-		t.Errorf("Expected len of the uploaded file: %v, actual: %v. File not written or encryption broken.", expectedLen, actualLen)
-	}
+	path1 := "path1"
+	sizes := []int{10, 1000, 65536, 80000, 131072, 328000, 1234567}
+	rand.Seed(time.Now().Unix())
+	for _, s := range sizes {
+		data := make([]byte, s)
+		for i := 0; i < s; i++ {
+			data[i] = byte(rand.Intn(256))
+		}
+		w := rs.NewWriter(path1)
 
-	var downloadDst bytes.Buffer
-	s.DownloadDecrypted(&downloadDst, "pic.jpg")
-	if !bytes.Equal(pic, downloadDst.Bytes()) {
-		t.Error("Downloaded file does not match the uploaded one.")
+		io.Copy(w, bytes.NewReader(data[:]))
+		w.Close()
+
+		r := rs.NewReader(path1)
+		var dst bytes.Buffer
+		_, err := io.Copy(&dst, r)
+		if err != nil {
+			t.Errorf("error reading from remote storage: %v", err.Error())
+		}
+		r.Close()
+
+		f, _ := afs.Open(path1)
+		res, _ := ioutil.ReadAll(f)
+		blockSize := c.BlockSize()
+		addOne := len(data)%blockSize != 0
+		var mult int
+		if addOne {
+			mult = len(data)/blockSize + 1
+		} else {
+			mult = len(data) / blockSize
+		}
+		expectedLen := mult*(c.NonceSize()+c.Overhead()) + len(data)
+		actualLen := len(res)
+		if actualLen != expectedLen {
+			t.Errorf("expected len of the uploaded data: %v, actual: %v. data not written or encryption broken.", expectedLen, actualLen)
+		}
+
+		if !bytes.Equal(data[:], dst.Bytes()) {
+			t.Error("downloaded data does not match the uploaded.")
+		}
 	}
 }

@@ -10,98 +10,88 @@ import (
 	"golang.org/x/crypto/nacl/secretbox"
 )
 
-const dataChunkSize = 64 * 1024
+const keyLen = 32
+const nonceLen = 24
 
 type Service interface {
-	Encrypt(dst io.Writer, plainDataReader io.Reader) error
-	Decrypt(dst io.Writer, encryptedDataReader io.Reader) error
+	Seal(plaintxt []byte) ([]byte, error)
+	Open(encrypted []byte) ([]byte, error)
+	NonceSize() int
+	BlockSize() int
+	Overhead() int
 }
 
-func NewService(encryptionKey string) Service {
-	return &srv{encryptionKey: encryptionKey}
+type option func(*srv)
+
+func WithBlockSize(blockSize int) option {
+	return func(s *srv) {
+		s.blockSize = blockSize
+	}
+}
+
+func NewService(encryptionKey string, options ...option) Service {
+	cs := &srv{encryptionKey: encryptionKey, blockSize: 64 * 1024}
+	for _, opt := range options {
+		opt(cs)
+	}
+	return cs
 }
 
 type srv struct {
 	encryptionKey string
+	blockSize     int
 }
 
-func (s *srv) Encrypt(dst io.Writer, plainDataReader io.Reader) error {
+func (s *srv) BlockSize() int {
+	return s.blockSize
+}
+
+func (s *srv) Overhead() int {
+	return secretbox.Overhead
+}
+
+func (s *srv) NonceSize() int {
+	return nonceLen
+}
+
+func (s *srv) Seal(plaintxt []byte) ([]byte, error) {
 	secretKeyBytes, err := hex.DecodeString(s.encryptionKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	var secretKey [32]byte
+	var secretKey [keyLen]byte
 	copy(secretKey[:], secretKeyBytes)
-	chunkSize := dataChunkSize
-	buf := make([]byte, 0, chunkSize)
-	for {
-		n, err := io.ReadAtLeast(plainDataReader, buf[0:cap(buf)], chunkSize)
-		//n, err := plainDataReader.Read(buf[0:cap(buf)])
-		buf = buf[:n]
-		if n == 0 {
-			if err == nil {
-				continue
-			}
-			if err == io.EOF {
-				break
-			}
-			log.Fatal(err)
-		}
-		if err != nil && err != io.ErrUnexpectedEOF {
-			return err
-		}
-		nonce, err := genNonce()
-		if err != nil {
-			return err
-		}
-		encryptedChunk := secretbox.Seal(nonce[:], buf[:], &nonce, &secretKey)
-		dst.Write(encryptedChunk)
+	nonce, err := genNonce()
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	encrypted := secretbox.Seal(nonce[:], plaintxt[:], &nonce, &secretKey)
+	return encrypted, nil
 }
 
-func (s *srv) Decrypt(dst io.Writer, encryptedDataReader io.Reader) error {
+func (s *srv) Open(encrypted []byte) ([]byte, error) {
 	secretKeyBytes, err := hex.DecodeString(s.encryptionKey)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	var secretKey [32]byte
+	var secretKey [keyLen]byte
 	copy(secretKey[:], secretKeyBytes)
 
-	chunkSize := 24 + dataChunkSize + 16
-	buf := make([]byte, 0, chunkSize)
-	for {
-		n, err := encryptedDataReader.Read(buf[0:cap(buf)])
-		buf = buf[:n]
-		if n == 0 {
-			if err == nil {
-				continue
-			}
-			if err == io.EOF {
-				break
-			}
-			log.Fatal(err)
-		}
-		if err != nil && err != io.EOF {
-			return err
-		}
-
-		var decryptNonce [24]byte
-		copy(decryptNonce[:], buf[:24])
-		decryptedChunk, ok := secretbox.Open(nil, buf[24:], &decryptNonce, &secretKey)
-		if !ok {
-			return fmt.Errorf("Could not decrypt data")
-		}
-		dst.Write(decryptedChunk)
+	var decryptNonce [nonceLen]byte
+	copy(decryptNonce[:], encrypted[:nonceLen])
+	decrypted, ok := secretbox.Open(nil, encrypted[nonceLen:], &decryptNonce, &secretKey)
+	if !ok {
+		log.Printf("Encrypted len: %v", len(encrypted))
+		return nil, fmt.Errorf("Could not decrypt data")
 	}
-	return nil
+	return decrypted, nil
 }
 
-func genNonce() ([24]byte, error) {
-	var nonce [24]byte
+func genNonce() ([nonceLen]byte, error) {
+	var nonce [nonceLen]byte
 	if _, err := io.ReadFull(rand.Reader, nonce[:]); err != nil {
-		return [24]byte{}, err
+		return [nonceLen]byte{}, err
 	}
 	return nonce, nil
 }

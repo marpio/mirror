@@ -16,18 +16,17 @@ package cmd
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/marpio/img-store/remotestorage"
-
 	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/localstorage"
 	"github.com/marpio/img-store/metadata"
-	"github.com/marpio/img-store/metadatastore/hashmap"
+	"github.com/marpio/img-store/remotestorage"
 	"github.com/marpio/img-store/remotestorage/b2"
+	"github.com/marpio/img-store/repository/hashmap"
 	"github.com/marpio/img-store/syncronizer"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
@@ -54,41 +53,31 @@ func runSync(dir string) {
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	done := wrapChan(sigs)
 	defer close(sigs)
-	defer close(done)
-	ctx := context.Background()
 
+	ctx := context.Background()
+	ctx, cancel := context.WithCancel(ctx)
+	go func() {
+		for {
+			select {
+			case <-sigs:
+				cancel()
+			}
+		}
+	}()
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
 	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
 
 	appFs := afero.NewOsFs()
-	metadataStore := hashmap.New(rs, dbPath)
+	repo, err := hashmap.New(rs, dbPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error creating metadata repository: %v", err)
+		os.Exit(-1)
+	}
 	localFilesRepo := localstorage.NewService(appFs)
 	syncronizer := syncronizer.New(rs,
-		metadataStore,
+		repo,
 		localFilesRepo,
-		metadata.NewExtractor())
-	syncronizer.Execute(dir, done)
-
-	dbFileReader, err := localFilesRepo.ReadFile(dbPath)
-	if err != nil {
-		log.Print("Error uploading DB")
-	}
-	if err := rs.UploadEncrypted(dbPath, dbFileReader); err != nil {
-		log.Print("Error uploading DB")
-	}
-}
-
-func wrapChan(sigs <-chan os.Signal) chan interface{} {
-	c := make(chan interface{}, 1)
-	go func() {
-		for {
-			_, ok := <-sigs
-			if ok {
-				c <- struct{}{}
-			}
-		}
-	}()
-	return c
+		metadata.NewExtractor(localFilesRepo))
+	syncronizer.Execute(ctx, dir)
 }

@@ -1,130 +1,159 @@
 package remotestorage
 
 import (
-	"bytes"
-	"fmt"
 	"io"
-	"log"
-	"sync"
 
 	"github.com/marpio/img-store/crypto"
-	"github.com/marpio/img-store/entity"
-	"github.com/marpio/img-store/fs"
+	"github.com/marpio/img-store/domain"
 )
 
-type Service interface {
-	ReaderService
-	WriterService
-}
-
-type ReaderService interface {
-	DownloadDecrypted(dst io.Writer, fileName string)
-	Exists(fileName string) bool
-}
-
-type WriterService interface {
-	UploadEncrypted(fileName string, reader io.Reader) error
-	Delete(fileName string) error
-}
-
-type Backend interface {
-	Read(string) io.ReadCloser
-	Write(string) io.WriteCloser
-	Delete(string) error
-	Exists(string) bool
-}
-
-//type Backend struct {
-//	ReadFn    func(string) io.ReadCloser
-//	WriteFn   func(string) io.WriteCloser
-//	DeleteFn  func(string) error
-//	ExistsFn  func(string) bool
-//	CryptoSrv crypto.Service
-//}
-
-func New(b Backend, c crypto.Service) Service {
-	return &rs{backend: b, cryptoSrv: c}
+func New(b domain.Storage, c crypto.Service) domain.Storage {
+	return &rs{backend: b, crpt: c}
 }
 
 type rs struct {
-	backend   Backend
-	cryptoSrv crypto.Service
+	backend domain.Storage
+	crpt    crypto.Service
 }
 
-func (b *rs) DownloadDecrypted(dst io.Writer, fileName string) {
-	r := b.backend.Read(fileName)
-	//r.ConcurrentDownloads = downloads
-	defer r.Close()
+type reader struct {
+	rd      io.ReadCloser
+	buf     []byte
+	r       int
+	w       int
+	err     error
+	bufSize int
+	crpt    crypto.Service
+}
 
-	err := b.cryptoSrv.Decrypt(dst, r)
+func (b *rs) NewReader(path string) (io.ReadCloser, error) {
+	bufSize := b.crpt.NonceSize() + b.crpt.BlockSize() + b.crpt.Overhead()
+	rd, err := b.backend.NewReader(path)
 	if err != nil {
-		log.Print(err)
-		panic(err)
+		return nil, err
 	}
+	return &reader{rd: rd, buf: make([]byte, bufSize), bufSize: bufSize, crpt: b.crpt}, nil
+}
+func (b *reader) readErr() error {
+	err := b.err
+	b.err = nil
+	return err
+}
+
+func (b *reader) Read(p []byte) (n int, err error) {
+	n = len(p)
+	if n == 0 {
+		return 0, b.readErr()
+	}
+	if b.r == b.w {
+		if b.err != nil {
+			return 0, b.readErr()
+		}
+		b.buf = make([]byte, b.bufSize)
+		b.r = 0
+		b.w = 0
+
+		n, b.err = b.rd.Read(b.buf)
+		if n < 0 {
+			panic("errNegativeRead")
+		}
+		if n == 0 {
+			return 0, b.readErr()
+		}
+		d, err := b.crpt.Open(b.buf[0:n])
+		if err != nil {
+			return 0, err
+		}
+		n = len(d)
+		b.buf = d
+		b.w += n
+	}
+	// copy as much as we can
+	n = copy(p, b.buf[b.r:b.w])
+	b.r += n
+	return n, nil
+}
+
+func (b *reader) Close() error {
+	return b.rd.Close()
+}
+
+type writer struct {
+	err  error
+	buf  []byte
+	n    int
+	wr   io.WriteCloser
+	crpt crypto.Service
+}
+
+func (b *rs) NewWriter(path string) io.WriteCloser {
+	return &writer{wr: b.backend.NewWriter(path), buf: make([]byte, b.crpt.BlockSize()), crpt: b.crpt}
+}
+
+// Available returns how many bytes are unused in the buffer.
+func (b *writer) available() int { return len(b.buf) - b.n }
+
+func (b *writer) Write(p []byte) (nn int, err error) {
+	for len(p) > b.available() && b.err == nil {
+		var n int
+		n = copy(b.buf[b.n:], p)
+		b.n += n
+		b.flush()
+		nn += n
+		p = p[n:]
+	}
+	if b.err != nil {
+		return nn, b.err
+	}
+	n := copy(b.buf[b.n:], p)
+	b.n += n
+	nn += n
+
+	return nn, nil
+}
+
+// Flush writes any buffered data to the underlying io.Writer.
+func (b *writer) flush() error {
+	if b.err != nil {
+		return b.err
+	}
+	if b.n == 0 {
+		return nil
+	}
+
+	encrypted, err := b.crpt.Seal(b.buf[0:b.n])
+	if err != nil {
+		return err
+	}
+	n, err := b.wr.Write(encrypted)
+	n = n - b.crpt.NonceSize() - b.crpt.Overhead()
+	if n < b.n && err == nil {
+		err = io.ErrShortWrite
+	}
+	if err != nil {
+		if n > 0 && n < b.n {
+			copy(b.buf[0:b.n-n], b.buf[n:b.n])
+		}
+		b.n -= n
+		b.err = err
+		return err
+	}
+	b.n = 0
+	return nil
+}
+
+func (b *writer) Close() error {
+	defer b.wr.Close()
+	return b.flush()
 }
 
 func (b *rs) Exists(fileName string) bool {
 	return b.backend.Exists(fileName)
 }
 
-func (b *rs) UploadEncrypted(fileName string, reader io.Reader) error {
-	w := b.backend.Write(fileName)
-	b.cryptoSrv.Encrypt(w, reader)
-	if err := w.Close(); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (b *rs) Delete(fileName string) error {
 	if err := b.backend.Delete(fileName); err != nil {
 		return err
 	}
-	return nil
-}
-
-const maxConcurrentUploads = 10
-
-func UploadPhotos(metadataStream <-chan *entity.PhotoWithThumb, fileReader fs.FileReaderFn, remotestorage Service) <-chan *entity.PhotoWithThumb {
-	uploadedPhotosStream := make(chan *entity.PhotoWithThumb)
-
-	go func() {
-		limiter := make(chan struct{}, maxConcurrentUploads)
-		var wg sync.WaitGroup
-		defer close(uploadedPhotosStream)
-		for metaData := range metadataStream {
-			limiter <- struct{}{}
-			wg.Add(1)
-			go func(m *entity.PhotoWithThumb) {
-				defer wg.Done()
-				defer func() { <-limiter }()
-				err := uploadPhoto(m, fileReader, remotestorage)
-				if err != nil {
-					log.Printf("error uploading photo or thumbnail: %v", err)
-					return
-				}
-				uploadedPhotosStream <- m
-			}(metaData)
-		}
-		wg.Wait()
-	}()
-	return uploadedPhotosStream
-}
-
-func uploadPhoto(img *entity.PhotoWithThumb, fileReader fs.FileReaderFn, remotestorage Service) error {
-	f, err := fileReader(img.Path)
-	if err != nil {
-		return fmt.Errorf("error opening file %v: %v", img.Path, err)
-	}
-	defer f.Close()
-
-	if err := remotestorage.UploadEncrypted(img.ThumbnailName, bytes.NewReader(img.Thumbnail)); err != nil {
-		return fmt.Errorf("error uploading thumbnail: %v - path: %v : %v", img.ThumbnailName, img.Path, err)
-	}
-
-	if err := remotestorage.UploadEncrypted(img.Name, f); err != nil {
-		return fmt.Errorf("error uploading photo: %v - img: %v: %v", img.Name, img.Path, err)
-	}
-
 	return nil
 }

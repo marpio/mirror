@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/kurin/blazer/b2"
-	"github.com/marpio/img-store/remotestorage"
+	"github.com/marpio/img-store/domain"
 )
 
 type b2Backend struct {
@@ -14,19 +14,18 @@ type b2Backend struct {
 	bucket *b2.Bucket
 }
 
-func New(ctx context.Context, b2id, b2key, bucketName string) remotestorage.Backend {
+func New(ctx context.Context, b2id, b2key, bucketName string) domain.Storage {
 	bucket := newB2Bucket(ctx, b2id, b2key, bucketName)
 	return &b2Backend{ctx: ctx, bucket: bucket}
 }
 
-func (b *b2Backend) Read(fileName string) io.ReadCloser {
+func (b *b2Backend) NewReader(fileName string) (io.ReadCloser, error) {
 	rd := b.bucket.Object(fileName).NewReader(b.ctx)
-	return rd
+	return rd, nil
 }
 
-func (b *b2Backend) Write(fileName string) io.WriteCloser {
-	obj := b.bucket.Object(fileName)
-	wr := obj.NewWriter(b.ctx)
+func (b *b2Backend) NewWriter(fileName string) io.WriteCloser {
+	wr := b.bucket.Object(fileName).NewWriter(b.ctx)
 	return wr
 }
 

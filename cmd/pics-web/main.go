@@ -4,23 +4,20 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"github.com/aymerick/raymond"
 	"github.com/goji/httpauth"
 	"github.com/gorilla/mux"
 	"github.com/marpio/img-store/crypto"
-	"github.com/marpio/img-store/entity"
-	"github.com/marpio/img-store/metadatastore"
-	"github.com/marpio/img-store/metadatastore/hashmap"
+	"github.com/marpio/img-store/domain"
 	"github.com/marpio/img-store/remotestorage"
 	"github.com/marpio/img-store/remotestorage/b2"
+	"github.com/marpio/img-store/repository"
+	"github.com/marpio/img-store/repository/hashmap"
 	"github.com/spf13/afero"
 )
 
@@ -35,11 +32,8 @@ func main() {
 	ctx := context.Background()
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
 	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
-	var appFs afero.Fs = afero.NewOsFs()
-	metadataStore, err := createMetadataStore(appFs, dbPath, rs)
-	if err != nil {
-		log.Fatal(err)
-	}
+	appFs := afero.NewOsFs()
+	metadataStore := createMetadataStore(appFs, dbPath, rs)
 
 	router := configureRouter(metadataStore, rs, dbPath)
 	http.Handle("/", httpauth.SimpleBasicAuth(username, password)(router))
@@ -47,11 +41,11 @@ func main() {
 	http.ListenAndServe(":5000", nil)
 }
 
-func configureRouter(metadataStore metadatastore.ReaderService, remotestorage remotestorage.ReaderService, imgDBPath string) *mux.Router {
+func configureRouter(metadataStore repository.ReaderService, remotestorage domain.StorageReader, imgDBPath string) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
-	r.HandleFunc("/images/year/{year}/month/{month}", monthImgsHandler(metadataStore))
-	r.HandleFunc("/files/{name}", fileHandler(remotestorage))
+	r.HandleFunc("/dirs/{dir}", dirHandler(metadataStore))
+	r.HandleFunc("/files/{id}", fileHandler(remotestorage))
 	r.HandleFunc("/reloaddb", func(w http.ResponseWriter, r *http.Request) {
 		err := metadataStore.Reload()
 		if err != nil {
@@ -64,31 +58,25 @@ func configureRouter(metadataStore metadatastore.ReaderService, remotestorage re
 	return r
 }
 
-func createMetadataStore(fs afero.Fs, imgDBPath string, remotestorage remotestorage.Service) (metadatastore.Service, error) {
-	metadataStore := hashmap.New(remotestorage, imgDBPath)
-	return metadataStore, nil
+func createMetadataStore(fs afero.Fs, imgDBPath string, remotestorage domain.Storage) repository.ReaderService {
+	repo, err := hashmap.New(remotestorage, imgDBPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error creating metadata repository: %v", err)
+		os.Exit(-1)
+	}
+	return repo
 }
 
-func mainPageHandler(metadataStore metadatastore.ReaderService) func(w http.ResponseWriter, r *http.Request) {
+func mainPageHandler(metadataStore repository.ReaderService) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		months, err := metadataStore.GetMonths()
-		var folders []interface{}
-		for _, m := range months {
-			data := struct {
-				Year  int
-				Month int
-			}{
-				int(m.Year()),
-				int(m.Month()),
-			}
-			folders = append(folders, data)
-		}
+		dirs, err := metadataStore.GetDirs()
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		ctx := map[string]interface{}{
-			"folders": folders,
+
+		ctx := map[string][]string{
+			"folders": dirs,
 		}
 		tmpl, err := raymond.ParseFile("templates/index.hbs")
 		if err != nil {
@@ -104,29 +92,17 @@ func mainPageHandler(metadataStore metadatastore.ReaderService) func(w http.Resp
 	}
 }
 
-func monthImgsHandler(metadataStore metadatastore.ReaderService) func(w http.ResponseWriter, r *http.Request) {
+func dirHandler(metadataStore repository.ReaderService) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		year, err := strconv.Atoi(vars["year"])
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		month, err := strconv.Atoi(vars["month"])
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		m := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
-		imgs, err := metadataStore.GetByMonth(m)
-		if err != nil {
-			http.Error(w, err.Error(), 500)
-			return
-		}
-		ctx := map[string][]*entity.Photo{
+		dir := vars["dir"]
+
+		imgs, err := metadataStore.GetByDir(dir)
+
+		ctx := map[string][]domain.Item{
 			"imgs": imgs,
 		}
-		tmpl, err := raymond.ParseFile("templates/month.hbs")
+		tmpl, err := raymond.ParseFile("templates/dir.hbs")
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -140,21 +116,21 @@ func monthImgsHandler(metadataStore metadatastore.ReaderService) func(w http.Res
 	}
 }
 
-func fileHandler(remotestorage remotestorage.ReaderService) func(w http.ResponseWriter, r *http.Request) {
+func fileHandler(remotestorage domain.StorageReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
-		fileName := vars["name"]
+		id := vars["id"]
 
-		pr, pw := io.Pipe()
-		go func() {
-			defer pw.Close()
-			remotestorage.DownloadDecrypted(pw, fileName)
-		}()
-		b, err := ioutil.ReadAll(pr)
+		rd, err := remotestorage.NewReader(id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
 		}
-		http.ServeContent(w, r, fileName, time.Now(), bytes.NewReader(b))
+		b, err := ioutil.ReadAll(rd)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		http.ServeContent(w, r, id, time.Now(), bytes.NewReader(b))
 	}
 }
