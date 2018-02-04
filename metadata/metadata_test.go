@@ -2,12 +2,13 @@ package metadata
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"os"
 	"testing"
 	"time"
 
-	"github.com/marpio/img-store/fs"
+	"github.com/marpio/img-store/domain"
 	"github.com/spf13/afero"
 )
 
@@ -52,13 +53,25 @@ func TestCreatedAt(t *testing.T) {
 
 func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	afs := afero.NewOsFs()
-	ex := NewExtractor()
-	files := []*fs.FileInfo{&fs.FileInfo{ModTime: time.Time{}, Path: "../test/sample2.jpg"}, &fs.FileInfo{ModTime: time.Time{}, Path: "../test/sample.jpg"}}
-	ch := ex.Extract(files, func(path string) (fs.File, error) { return afs.Open(path) })
+	rs := NewStorageReadSeeker(afs)
+	ex := NewExtractor(rs)
+	files := []*domain.FileInfo{&domain.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample2.jpg"}, &domain.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample.jpg"}}
+	ch := ex.Extract(context.Background(), files)
 	for p := range ch {
 		c := p.CreatedAt
 		if !(c.Year() == 2017 && c.Month() == 8 && c.Day() == 25 && c.Hour() == 17 && c.Minute() == 3 && c.Second() == 30) {
 			t.Error("Extracting CreatedAt failed.")
 		}
 	}
+}
+
+type storageReadSeekerMock struct {
+	fs afero.Fs
+}
+
+func NewStorageReadSeeker(fs afero.Fs) *storageReadSeekerMock {
+	return &storageReadSeekerMock{fs: fs}
+}
+func (m *storageReadSeekerMock) NewReadSeeker(path string) (domain.ReadCloseSeeker, error) {
+	return m.fs.Open(path)
 }

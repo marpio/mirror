@@ -46,7 +46,7 @@ func TestWriteRead(t *testing.T) {
 		io.Copy(w, bytes.NewReader(data[:]))
 		w.Close()
 
-		r := rs.NewReader(path1)
+		r, _ := rs.NewReader(path1)
 		var dst bytes.Buffer
 		_, err := io.Copy(&dst, r)
 		if err != nil {
