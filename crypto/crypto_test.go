@@ -13,7 +13,7 @@ func TestEncrypt(t *testing.T) {
 		data[i] = 100
 	}
 
-	r, _ := NewService(encKey, 0).Seal(data[:])
+	r, _ := NewService(encKey).Seal(data[:])
 	if bytes.Equal(r, data[:]) {
 		t.Error("Encrypt output should not be equal the input.")
 	}
@@ -24,7 +24,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	for i := 0; i < 80000; i++ {
 		data[i] = 100
 	}
-	s := NewService(encKey, 0)
+	s := NewService(encKey)
 	enc, _ := s.Seal(data[:])
 	dec, _ := s.Open(enc)
 	if !bytes.Equal(dec, data[:]) {
