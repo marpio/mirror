@@ -96,10 +96,21 @@ func dirHandler(metadataStore domain.MetadataRepoReader) func(w http.ResponseWri
 		vars := mux.Vars(r)
 		dir := vars["dir"]
 
-		imgs, err := metadataStore.GetByDir(dir)
+		items, err := metadataStore.GetByDir(dir)
+		photos := make([]interface{}, 0)
+		for _, it := range items {
+			p := struct {
+				ID      string
+				ThumbID string
+			}{
+				it.ID(),
+				it.ThumbID(),
+			}
+			photos = append(photos, p)
+		}
 
-		ctx := map[string][]domain.Item{
-			"imgs": imgs,
+		ctx := map[string][]interface{}{
+			"imgs": photos,
 		}
 		tmpl, err := raymond.ParseFile("templates/dir.hbs")
 		if err != nil {
