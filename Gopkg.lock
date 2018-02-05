@@ -2,8 +2,24 @@
 
 
 [[projects]]
+  name = "github.com/apex/log"
+  packages = [
+    ".",
+    "handlers/json",
+    "handlers/multi",
+    "handlers/text"
+  ]
+  revision = "0296d6eb16bb28f8a0c55668affcf4876dc269be"
+  version = "v1.0.0"
+
+[[projects]]
   name = "github.com/aymerick/raymond"
-  packages = [".","ast","lexer","parser"]
+  packages = [
+    ".",
+    "ast",
+    "lexer",
+    "parser"
+  ]
   revision = "a2232af10b53ef1ae5a767f5178db3a6c1dab655"
   version = "v2.0.1"
 
@@ -22,8 +38,8 @@
 [[projects]]
   name = "github.com/gorilla/mux"
   packages = ["."]
-  revision = "bcd8bc72b08df0f70df986b97f95590779502d31"
-  version = "v1.4.0"
+  revision = "53c1911da2b537f792e7cafcb446b05ffe33b996"
+  version = "v1.6.1"
 
 [[projects]]
   name = "github.com/inconshreveable/mousetrap"
@@ -33,9 +49,14 @@
 
 [[projects]]
   name = "github.com/kurin/blazer"
-  packages = ["b2","base","internal/b2types","internal/blog"]
-  revision = "612082ed2430716569f1ec816fc6ade849020816"
-  version = "v0.1.0"
+  packages = [
+    "b2",
+    "base",
+    "internal/b2types",
+    "internal/blog"
+  ]
+  revision = "e269a1a17bb6aec278c06a57cb7e8f8d0d333e04"
+  version = "v0.2.1"
 
 [[projects]]
   branch = "master"
@@ -44,22 +65,34 @@
   revision = "891127d8d1b52734debe1b3c3d7e747502b6c366"
 
 [[projects]]
+  name = "github.com/pkg/errors"
+  packages = ["."]
+  revision = "645ef00459ed84a119197bfb8d8205042c6df63d"
+  version = "v0.8.0"
+
+[[projects]]
   branch = "go1"
   name = "github.com/rwcarlsen/goexif"
-  packages = ["exif","tiff"]
-  revision = "709fab3d192d7c62f86043caff1e7e3fb0f42bd8"
+  packages = [
+    "exif",
+    "tiff"
+  ]
+  revision = "17202558c8d9c3fd047859f1a5e73fd9ae709187"
 
 [[projects]]
-  branch = "master"
   name = "github.com/spf13/afero"
-  packages = [".","mem"]
-  revision = "ee1bd8ee15a1306d1f9201acc41ef39cd9f99a1b"
+  packages = [
+    ".",
+    "mem"
+  ]
+  revision = "bb8f1927f2a9d3ab41c9340aa034f6b803f4359c"
+  version = "v1.0.2"
 
 [[projects]]
-  branch = "master"
   name = "github.com/spf13/cobra"
   packages = ["."]
-  revision = "b78744579491c1ceeaaa3b40205e56b0591b93a3"
+  revision = "7b2c5ac9fc04fc5efafb60700713d4fa609b777b"
+  version = "v0.0.1"
 
 [[projects]]
   name = "github.com/spf13/pflag"
@@ -70,24 +103,29 @@
 [[projects]]
   branch = "master"
   name = "golang.org/x/crypto"
-  packages = ["nacl/secretbox","poly1305","salsa20/salsa"]
-  revision = "558b6879de74bc843225cde5686419267ff707ca"
-
-[[projects]]
-  branch = "master"
-  name = "golang.org/x/net"
-  packages = ["context"]
-  revision = "f5079bd7f6f74e23c4d65efa0f4ce14cbd6a3c0f"
+  packages = [
+    "nacl/secretbox",
+    "poly1305",
+    "salsa20/salsa"
+  ]
+  revision = "1875d0a70c90e57f11972aefd42276df65e895b9"
 
 [[projects]]
   branch = "master"
   name = "golang.org/x/text"
-  packages = ["internal/gen","internal/triegen","internal/ucd","transform","unicode/cldr","unicode/norm"]
-  revision = "1cbadb444a806fd9430d14ad08967ed91da4fa0a"
+  packages = [
+    "internal/gen",
+    "internal/triegen",
+    "internal/ucd",
+    "transform",
+    "unicode/cldr",
+    "unicode/norm"
+  ]
+  revision = "e19ae1496984b1c655b8044a65c0300a3c878dd3"
 
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "aa27d1bd710eda5af7c8a64c60a2fe6087d2b8bf384447b33b0e96fbd7ac9199"
+  inputs-digest = "cc332598c03d871f2ea11cd3a1d72b74fc2a70b733daabc47d35b2c1b1aadee0"
   solver-name = "gps-cdcl"
   solver-version = 1

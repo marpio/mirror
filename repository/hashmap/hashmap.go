@@ -31,19 +31,19 @@ func (it item) Dir() string {
 	return it.Directory
 }
 
-type M map[string]map[string]*item
+type m map[string]map[string]*item
 
 type hashmapStore struct {
 	rs       domain.Storage
-	data     M
+	data     m
 	filename string
 }
 
 func New(ctx context.Context, rs domain.Storage, filename string) (domain.MetadataRepo, error) {
-	var decodedMetadata M
+	var decodedMetadata m
 	exists := rs.Exists(ctx, filename)
 	if !exists {
-		decodedMetadata = make(M)
+		decodedMetadata = make(m)
 	} else {
 		r, err := rs.NewReader(ctx, filename)
 		if err != nil {
@@ -52,14 +52,14 @@ func New(ctx context.Context, rs domain.Storage, filename string) (domain.Metada
 		defer r.Close()
 		dec := json.NewDecoder(r)
 		if err := dec.Decode(&decodedMetadata); err != nil {
-			decodedMetadata = make(M)
+			decodedMetadata = make(m)
 		}
 	}
 	return &hashmapStore{rs: rs, data: decodedMetadata, filename: filename}, nil
 }
 
 func (s *hashmapStore) Reload(ctx context.Context) error {
-	var decodedMetadata M
+	var decodedMetadata m
 	r, err := s.rs.NewReader(ctx, s.filename)
 	if err != nil {
 		return err
@@ -67,7 +67,7 @@ func (s *hashmapStore) Reload(ctx context.Context) error {
 	defer r.Close()
 	dec := json.NewDecoder(r)
 	if err := dec.Decode(&decodedMetadata); err != nil {
-		s.data = make(M)
+		s.data = make(m)
 		return err
 	}
 	s.data = decodedMetadata

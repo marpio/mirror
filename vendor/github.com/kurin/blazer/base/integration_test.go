@@ -26,7 +26,9 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/net/context"
+	"github.com/kurin/blazer/x/transport"
+
+	"context"
 )
 
 const (
@@ -55,7 +57,7 @@ func TestStorage(t *testing.T) {
 	ctx := context.Background()
 
 	// b2_authorize_account
-	b2, err := AuthorizeAccount(ctx, id, key)
+	b2, err := AuthorizeAccount(ctx, id, key, UserAgent("blazer-base-test"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,6 +270,167 @@ func TestStorage(t *testing.T) {
 	}
 }
 
+func TestUploadAuthAfterConnectionHang(t *testing.T) {
+	id := os.Getenv(apiID)
+	key := os.Getenv(apiKey)
+	if id == "" || key == "" {
+		t.Skipf("B2_ACCOUNT_ID or B2_SECRET_KEY unset; skipping integration tests")
+	}
+	ctx := context.Background()
+
+	hung := make(chan struct{})
+
+	// An http.RoundTripper that dies after sending ~10k bytes.
+	hang := func() {
+		close(hung)
+		select {}
+	}
+	tport := transport.WithFailures(nil, transport.AfterNBytes(10000, hang))
+
+	b2, err := AuthorizeAccount(ctx, id, key, Transport(tport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bname := id + "-" + bucketName
+	bucket, err := b2.CreateBucket(ctx, bname, "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := bucket.DeleteBucket(ctx); err != nil {
+			t.Error(err)
+		}
+	}()
+	ue, err := bucket.GetUploadURL(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	smallFile := io.LimitReader(zReader{}, 1024*50) // 50k
+	hash := sha1.New()
+	buf := &bytes.Buffer{}
+	w := io.MultiWriter(hash, buf)
+	if _, err := io.Copy(w, smallFile); err != nil {
+		t.Error(err)
+	}
+	smallSHA1 := fmt.Sprintf("%x", hash.Sum(nil))
+
+	go func() {
+		ue.UploadFile(ctx, buf, buf.Len(), smallFileName, "application/octet-stream", smallSHA1, nil)
+		t.Fatal("this ought not to be reachable")
+	}()
+
+	<-hung
+
+	// Do the whole thing again with the same upload auth, before the remote end
+	// notices we're gone.
+	smallFile = io.LimitReader(zReader{}, 1024*50) // 50k again
+	buf.Reset()
+	if _, err := io.Copy(buf, smallFile); err != nil {
+		t.Error(err)
+	}
+	file, err := ue.UploadFile(ctx, buf, buf.Len(), smallFileName, "application/octet-stream", smallSHA1, nil)
+	if err == nil {
+		t.Error("expected an error, got none")
+		if err := file.DeleteFileVersion(ctx); err != nil {
+			t.Error(err)
+		}
+	}
+	if Action(err) != AttemptNewUpload {
+		t.Errorf("Action(%v): got %v, want AttemptNewUpload", err, Action(err))
+	}
+}
+
+func TestCancelledContextCancelsHTTPRequest(t *testing.T) {
+	id := os.Getenv(apiID)
+	key := os.Getenv(apiKey)
+	if id == "" || key == "" {
+		t.Skipf("B2_ACCOUNT_ID or B2_SECRET_KEY unset; skipping integration tests")
+	}
+	ctx := context.Background()
+
+	tport := transport.WithFailures(nil, transport.MatchPathSubstring("b2_upload_file"), transport.FailureRate(1), transport.Stall(2*time.Second))
+
+	b2, err := AuthorizeAccount(ctx, id, key, Transport(tport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bname := id + "-" + bucketName
+	bucket, err := b2.CreateBucket(ctx, bname, "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := bucket.DeleteBucket(ctx); err != nil {
+			t.Error(err)
+		}
+	}()
+	ue, err := bucket.GetUploadURL(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	smallFile := io.LimitReader(zReader{}, 1024*50) // 50k
+	hash := sha1.New()
+	buf := &bytes.Buffer{}
+	w := io.MultiWriter(hash, buf)
+	if _, err := io.Copy(w, smallFile); err != nil {
+		t.Error(err)
+	}
+	smallSHA1 := fmt.Sprintf("%x", hash.Sum(nil))
+	cctx, cancel := context.WithCancel(ctx)
+	go func() {
+		time.Sleep(1)
+		cancel()
+	}()
+	if _, err := ue.UploadFile(cctx, buf, buf.Len(), smallFileName, "application/octet-stream", smallSHA1, nil); err != context.Canceled {
+		t.Errorf("expected canceled context, but got %v", err)
+	}
+}
+
+func TestDeadlineExceededContextCancelsHTTPRequest(t *testing.T) {
+	id := os.Getenv(apiID)
+	key := os.Getenv(apiKey)
+	if id == "" || key == "" {
+		t.Skipf("B2_ACCOUNT_ID or B2_SECRET_KEY unset; skipping integration tests")
+	}
+	ctx := context.Background()
+
+	tport := transport.WithFailures(nil, transport.MatchPathSubstring("b2_upload_file"), transport.FailureRate(1), transport.Stall(2*time.Second))
+	b2, err := AuthorizeAccount(ctx, id, key, Transport(tport))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bname := id + "-" + bucketName
+	bucket, err := b2.CreateBucket(ctx, bname, "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := bucket.DeleteBucket(ctx); err != nil {
+			t.Error(err)
+		}
+	}()
+	ue, err := bucket.GetUploadURL(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	smallFile := io.LimitReader(zReader{}, 1024*50) // 50k
+	hash := sha1.New()
+	buf := &bytes.Buffer{}
+	w := io.MultiWriter(hash, buf)
+	if _, err := io.Copy(w, smallFile); err != nil {
+		t.Error(err)
+	}
+	smallSHA1 := fmt.Sprintf("%x", hash.Sum(nil))
+	cctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	if _, err := ue.UploadFile(cctx, buf, buf.Len(), smallFileName, "application/octet-stream", smallSHA1, nil); err != context.DeadlineExceeded {
+		t.Errorf("expected deadline exceeded error, but got %v", err)
+	}
+}
+
 func compareFileAndInfo(t *testing.T, info *FileInfo, name, sha1 string, imap map[string]string) {
 	if info.Name != name {
 		t.Errorf("got %q, want %q", info.Name, name)
@@ -414,5 +577,74 @@ func TestEscapes(t *testing.T) {
 		if f != tc.Raw {
 			t.Errorf("decode %q: got %q, want %q", tc.Full, f, tc.Raw)
 		}
+	}
+}
+
+func TestUploadDownloadFilenameEscaping(t *testing.T) {
+	filename := "file%foo.txt"
+
+	id := os.Getenv(apiID)
+	key := os.Getenv(apiKey)
+
+	if id == "" || key == "" {
+		t.Skipf("B2_ACCOUNT_ID or B2_SECRET_KEY unset; skipping integration tests")
+	}
+	ctx := context.Background()
+
+	// b2_authorize_account
+	b2, err := AuthorizeAccount(ctx, id, key, UserAgent("blazer-base-test"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// b2_create_bucket
+	bname := id + "-" + bucketName
+	bucket, err := b2.CreateBucket(ctx, bname, "", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		// b2_delete_bucket
+		if err := bucket.DeleteBucket(ctx); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// b2_get_upload_url
+	ue, err := bucket.GetUploadURL(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// b2_upload_file
+	smallFile := io.LimitReader(zReader{}, 128)
+	hash := sha1.New()
+	buf := &bytes.Buffer{}
+	w := io.MultiWriter(hash, buf)
+	if _, err := io.Copy(w, smallFile); err != nil {
+		t.Error(err)
+	}
+	smallSHA1 := fmt.Sprintf("%x", hash.Sum(nil))
+	file, err := ue.UploadFile(ctx, buf, buf.Len(), filename, "application/octet-stream", smallSHA1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	defer func() {
+		// b2_delete_file_version
+		if err := file.DeleteFileVersion(ctx); err != nil {
+			t.Error(err)
+		}
+	}()
+
+	// b2_download_file_by_name
+	fr, err := bucket.DownloadFileByName(ctx, filename, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lbuf := &bytes.Buffer{}
+	if _, err := io.Copy(lbuf, fr); err != nil {
+		t.Fatal(err)
 	}
 }

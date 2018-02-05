@@ -16,8 +16,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
-	"log"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -52,14 +50,4 @@ func Execute() {
 func init() {
 	RootCmd.AddCommand(syncCmd)
 	RootCmd.AddCommand(downloadCmd)
-}
-
-func initLog() io.Closer {
-	f, err := os.Create("output.log")
-	if err != nil {
-		log.Fatalf("error opening file: %v", err)
-	}
-
-	log.SetOutput(f)
-	return f
 }

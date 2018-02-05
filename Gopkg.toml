@@ -34,3 +34,6 @@
   go-version = "go1.9.2"
   install = [ "./cmd/pics-web/..." ]
   ensure = "false"
+[[constraint]]
+  name = "github.com/apex/log"
+  version = "1.0.0"

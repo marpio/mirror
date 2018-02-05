@@ -3,12 +3,11 @@ package syncronizer
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
-	"log"
 	"sync"
 	"time"
 
+	"github.com/apex/log"
 	"github.com/marpio/img-store/domain"
 )
 
@@ -18,6 +17,7 @@ type Service struct {
 	localstrg            domain.LocalStorage
 	metadataextr         domain.Extractor
 	maxConcurrentUploads int
+	timeout              time.Duration
 }
 
 type option func(*Service)
@@ -27,13 +27,18 @@ func WithMaxConcurrentUploads(maxConcurrentUploads int) option {
 		s.maxConcurrentUploads = maxConcurrentUploads
 	}
 }
+func WithTimeout(t time.Duration) option {
+	return func(s *Service) {
+		s.timeout = t
+	}
+}
 
 func New(remotestorage domain.Storage,
 	metadataStore domain.MetadataRepo, localFilesRepo domain.LocalStorage,
 	metadataextr domain.Extractor,
 	options ...option) *Service {
 
-	s := &Service{remotestrg: remotestorage, metadataStore: metadataStore, localstrg: localFilesRepo, metadataextr: metadataextr, maxConcurrentUploads: 10}
+	s := &Service{remotestrg: remotestorage, metadataStore: metadataStore, localstrg: localFilesRepo, metadataextr: metadataextr, maxConcurrentUploads: 10, timeout: time.Minute}
 	for _, opt := range options {
 		opt(s)
 	}
@@ -87,6 +92,7 @@ func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan *dom
 }
 
 func (s *Service) syncWithRemoteStorage(ctx context.Context, metadataStream <-chan *domain.Photo) <-chan *domain.Photo {
+
 	uploadedPhotosStream := make(chan *domain.Photo)
 
 	go func() {
@@ -105,11 +111,8 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, metadataStream <-ch
 				go func(m *domain.Photo) {
 					defer wg.Done()
 					defer func() { <-limiter }()
-					err := s.uploadPhoto(ctx, m)
-					if err != nil {
-						log.Print(err)
-						return
-					}
+					s.uploadPhoto(ctx, m)
+					s.uploadThumb(ctx, m)
 					uploadedPhotosStream <- m
 				}(metaData)
 			case <-ctx.Done():
@@ -121,32 +124,48 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, metadataStream <-ch
 	return uploadedPhotosStream
 }
 
-func (s *Service) uploadPhoto(ctx context.Context, img *domain.Photo) error {
-	c, cancel := context.WithTimeout(ctx, time.Minute)
+func (s *Service) uploadPhoto(ctx context.Context, img *domain.Photo) {
+	logctx := log.WithFields(log.Fields{
+		"photoFilePath": img.FilePath,
+	})
+	defer logctx.Trace("uploading")
+	c, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	f, err := s.localstrg.NewReader(c, img.FilePath)
 	if err != nil {
-		return fmt.Errorf("error opening file %v: %v", img.FilePath, err)
+		logctx.WithError(err)
+		return
 	}
 	defer f.Close()
 
-	w := s.remotestrg.NewWriter(c, img.ThumbID())
-	_, err = io.Copy(w, bytes.NewReader(img.Thumbnail))
-	if err != nil {
-		return fmt.Errorf("error writing thumbnail. path: %v, err: %v", img.FilePath, err)
-	}
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("error closing remote storage writer %v", err)
-	}
-
-	w = s.remotestrg.NewWriter(c, img.ID())
+	w := s.remotestrg.NewWriter(c, img.ID())
 	_, err = io.Copy(w, f)
 	if err != nil {
-		return fmt.Errorf("error writing photo. path: %v, err: %v", img.FilePath, err)
+		logctx.WithError(err)
+		return
 	}
 	if err := w.Close(); err != nil {
-		return fmt.Errorf("error closing remote storage writer %v", err)
+		logctx.WithError(err)
+		return
 	}
+}
 
-	return nil
+func (s *Service) uploadThumb(ctx context.Context, img *domain.Photo) {
+	logctx := log.WithFields(log.Fields{
+		"thumbFilePath": img.FilePath,
+	})
+	defer logctx.Trace("uploading")
+	c, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+
+	w := s.remotestrg.NewWriter(c, img.ThumbID())
+	_, err := io.Copy(w, bytes.NewReader(img.Thumbnail))
+	if err != nil {
+		logctx.WithError(err)
+		return
+	}
+	if err := w.Close(); err != nil {
+		logctx.WithError(err)
+		return
+	}
 }

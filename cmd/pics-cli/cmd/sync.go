@@ -22,6 +22,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/apex/log"
+	"github.com/apex/log/handlers/json"
+	"github.com/apex/log/handlers/multi"
+	"github.com/apex/log/handlers/text"
 	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/localstorage"
 	"github.com/marpio/img-store/metadata"
@@ -43,9 +47,18 @@ var syncCmd = &cobra.Command{
 }
 
 func runSync(dir string) {
-	f := initLog()
-	defer f.Close()
-
+	logFile, err := os.Create("log.json")
+	if err != nil {
+		log.Fatal("error creating log file: %v", err)
+	}
+	defer logFile.Close()
+	log.SetHandler(multi.New(
+		text.New(os.Stderr),
+		json.New(logFile),
+	))
+	logctx := log.WithFields(log.Fields{
+		"dir_to_sync": dir,
+	})
 	encryptionKey := os.Getenv("ENCR_KEY")
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
@@ -62,6 +75,7 @@ func runSync(dir string) {
 		for {
 			select {
 			case <-sigs:
+				logctx.Warn("process terminated. syscall.SIGINT or syscall.SIGTERM.")
 				cancel()
 			}
 		}
@@ -70,7 +84,6 @@ func runSync(dir string) {
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
 	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
 
-	appFs := afero.NewOsFs()
 	c, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	repo, err := hashmap.New(c, rs, dbPath)
@@ -78,10 +91,13 @@ func runSync(dir string) {
 		fmt.Fprintf(os.Stderr, "error creating metadata repository: %v", err)
 		os.Exit(-1)
 	}
+	appFs := afero.NewOsFs()
 	localFilesRepo := localstorage.NewService(appFs)
 	syncronizer := syncronizer.New(rs,
 		repo,
 		localFilesRepo,
 		metadata.NewExtractor(localFilesRepo))
+	logctx.Info("sync started.")
 	syncronizer.Execute(ctx, dir)
+	logctx.Info("sync compleated.")
 }

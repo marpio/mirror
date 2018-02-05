@@ -6,10 +6,10 @@ import (
 	"context"
 	"image/jpeg"
 	"io"
-	"log"
 	"sync"
 	"time"
 
+	"github.com/apex/log"
 	"github.com/marpio/img-store/domain"
 	"github.com/marpio/img-store/localstorage"
 	"github.com/nfnt/resize"
@@ -56,22 +56,28 @@ loop:
 		case <-ctx.Done():
 			break loop
 		default:
+			logctx := log.WithFields(log.Fields{
+				"photo": ph.FilePath,
+			})
 			f, err := s.rd.NewReadSeeker(ctx, ph.FilePath)
 			if err != nil {
-				log.Printf("error opening file %v: %v", ph.FilePath, err)
+				logctx.WithError(err)
+				continue loop
 			}
 			defer f.Close()
 
 			createdAt, err := extractCreatedAt(f)
 			if err != nil {
-				log.Printf("can't extract created_at for path: %v: %v", ph.FilePath, err)
+				logctx.WithError(err)
+				continue loop
 			} else {
 				dirCreatedAt = createdAt
 			}
 			f.Seek(0, 0)
 			thumb, err := extractThumb(f)
 			if err != nil {
-				log.Printf("can't extract thumbnail for path: %v: %v", ph.FilePath, err)
+				logctx.WithError(err)
+				continue loop
 			}
 
 			p := &domain.Photo{FileInfo: ph, Metadata: &domain.Metadata{CreatedAt: createdAt, Thumbnail: thumb}}
