@@ -16,12 +16,12 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"io"
-	"log"
 	"os"
 	"time"
 
+	"github.com/apex/log"
+	"github.com/apex/log/handlers/text"
 	"github.com/marpio/img-store/crypto"
 	"github.com/marpio/img-store/remotestorage"
 	"github.com/marpio/img-store/remotestorage/b2"
@@ -38,8 +38,11 @@ var downloadCmd = &cobra.Command{
 }
 
 func runDownload(localFilePath, remoteFilePath string) {
-	l := initLog()
-	defer l.Close()
+	log.SetHandler(text.New(os.Stderr))
+	defer log.WithFields(log.Fields{
+		"localFilePath":  localFilePath,
+		"remoteFilePath": remoteFilePath,
+	}).Trace("starting download.")
 	ctx := context.Background()
 
 	encryptionKey := os.Getenv("ENCR_KEY")
@@ -53,15 +56,14 @@ func runDownload(localFilePath, remoteFilePath string) {
 	f, err := os.Create(localFilePath)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("could not create the destination file.")
 	}
 	defer f.Close()
 	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 	r, err := rs.NewReader(ctx, remoteFilePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error opening file on remote storage: %v", err)
-		os.Exit(-1)
+		log.Fatal(err.Error())
 	}
 	defer r.Close()
 	io.Copy(f, r)

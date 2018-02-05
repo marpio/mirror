@@ -49,7 +49,7 @@ var syncCmd = &cobra.Command{
 func runSync(dir string) {
 	logFile, err := os.Create("log.json")
 	if err != nil {
-		log.Fatal("error creating log file: %v", err)
+		log.Fatal("error creating log file")
 	}
 	defer logFile.Close()
 	log.SetHandler(multi.New(
