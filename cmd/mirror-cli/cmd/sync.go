@@ -45,6 +45,14 @@ var syncCmd = &cobra.Command{
 	},
 }
 
+func getenv(n string) string {
+	v := os.Getenv(n)
+	if v == "" {
+		panic("could not find env var " + n)
+	}
+	return v
+}
+
 func runSync(dir string) {
 	logFile, err := os.Create("log.json")
 	if err != nil {
@@ -56,11 +64,11 @@ func runSync(dir string) {
 		json.New(logFile),
 	))
 
-	encryptionKey := os.Getenv("ENCR_KEY")
-	b2id := os.Getenv("B2_ACCOUNT_ID")
-	b2key := os.Getenv("B2_ACCOUNT_KEY")
-	bucketName := os.Getenv("B2_BUCKET_NAME")
-	dbPath := os.Getenv("IMG_DB")
+	encryptionKey := getenv("ENCR_KEY")
+	b2id := getenv("B2_ACCOUNT_ID")
+	b2key := getenv("B2_ACCOUNT_KEY")
+	bucketName := getenv("B2_BUCKET_NAME")
+	dbPath := getenv("REPO")
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)

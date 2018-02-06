@@ -20,21 +20,29 @@ import (
 	"github.com/spf13/afero"
 )
 
+func getenv(n string) string {
+	v := os.Getenv(n)
+	if v == "" {
+		panic("could not find env var " + n)
+	}
+	return v
+}
+
 func main() {
-	encryptionKey := os.Getenv("ENCR_KEY")
-	b2id := os.Getenv("B2_ACCOUNT_ID")
-	b2key := os.Getenv("B2_ACCOUNT_KEY")
-	bucketName := os.Getenv("B2_BUCKET_NAME")
-	dbPath := os.Getenv("IMG_DB")
-	username := os.Getenv("PICS_USERNAME")
-	password := os.Getenv("PICS_PASSWORD")
+	encryptionKey := getenv("ENCR_KEY")
+	b2id := getenv("B2_ACCOUNT_ID")
+	b2key := getenv("B2_ACCOUNT_KEY")
+	bucketName := getenv("B2_BUCKET_NAME")
+	repoFileName := getenv("REPO")
+	username := getenv("MIRROR_USERNAME")
+	password := getenv("MIRROR_PASSWORD")
 	ctx := context.Background()
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
 	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
 	appFs := afero.NewOsFs()
-	metadataStore := createMetadataStore(ctx, appFs, dbPath, rs)
+	metadataStore := createMetadataStore(ctx, appFs, repoFileName, rs)
 
-	router := configureRouter(ctx, metadataStore, rs, dbPath)
+	router := configureRouter(ctx, metadataStore, rs, repoFileName)
 	http.Handle("/", httpauth.SimpleBasicAuth(username, password)(router))
 
 	http.ListenAndServe(":5000", nil)
