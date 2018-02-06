@@ -5,7 +5,7 @@ jobs:
       # CircleCI Go images available at: https://hub.docker.com/r/circleci/golang/
       - image: circleci/golang:1.9
 
-    working_directory: /go/src/github.com/marpio/img-store
+    working_directory: /go/src/github.com/marpio/mirror
 
     environment:
       TEST_RESULTS: /tmp/test-results
@@ -47,9 +47,9 @@ jobs:
           version: 17.07.0-ce
       - run: |
           TAG=0.1.$CIRCLE_BUILD_NUM
-          docker build -t   marpiot/pics:$TAG .
+          docker build -t   marpiot/mirror:$TAG .
           docker login -u $DOCKER_USER -p $DOCKER_PASS
-          docker push marpiot/pics:$TAG
+          docker push marpiot/mirror:$TAG
   deploy:
     docker:
       - image: governmentpaas/git-ssh:latest
@@ -63,7 +63,7 @@ jobs:
             ssh-keyscan -H ${DOKKU_HOSTNAME} >> ~/.ssh/known_hosts
             NR=$((CIRCLE_BUILD_NUM-1))
             TAG=0.1.$NR
-            ssh marpio@${DOKKU_HOSTNAME} "docker pull marpiot/pics:$TAG && docker tag marpiot/pics:$TAG dokku/foto:$TAG && dokku tags:deploy foto $TAG"
+            ssh marpio@${DOKKU_HOSTNAME} "docker pull marpiot/mirror:$TAG && docker tag marpiot/mirror:$TAG dokku/foto:$TAG && dokku tags:deploy foto $TAG"
 workflows:
   version: 2
   build-deploy:

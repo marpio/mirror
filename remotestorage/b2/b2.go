@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/kurin/blazer/b2"
-	"github.com/marpio/img-store/domain"
+	"github.com/marpio/mirror/domain"
 )
 
 type b2Backend struct {

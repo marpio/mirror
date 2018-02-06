@@ -30,9 +30,9 @@
   name = "github.com/rwcarlsen/goexif"
 
 [metadata.heroku]
-  root-package = "github.com/marpio/img-store"
+  root-package = "github.com/marpio/mirror"
   go-version = "go1.9.2"
-  install = [ "./cmd/pics-web/..." ]
+  install = [ "./cmd/mirror-web/..." ]
   ensure = "false"
 [[constraint]]
   name = "github.com/apex/log"

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/marpio/img-store/domain"
+	"github.com/marpio/mirror/domain"
 )
 
 type item struct {

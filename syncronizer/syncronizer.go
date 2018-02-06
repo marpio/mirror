@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/marpio/img-store/domain"
+	"github.com/marpio/mirror/domain"
 )
 
 type Service struct {
@@ -45,7 +45,7 @@ func New(remotestorage domain.Storage,
 	return s
 }
 
-func (s *Service) Execute(ctx context.Context, rootPath string) {
+func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath string) {
 	filterFn := func(it *domain.FileInfo) bool {
 		exists, _ := s.metadataStore.Exists(it.ID())
 		if !exists {
@@ -60,9 +60,9 @@ func (s *Service) Execute(ctx context.Context, rootPath string) {
 	}
 
 	newAndModifiedFiles := s.localstrg.SearchFiles(rootPath, filterFn, ".jpg", ".jpeg")
-
-	photosStream := s.metadataextr.Extract(ctx, newAndModifiedFiles)
-	syncedPhotosStream := s.syncWithRemoteStorage(ctx, photosStream)
+	logctx.Infof("%d element to sync.", len(newAndModifiedFiles))
+	photosStream := s.metadataextr.Extract(ctx, logctx, newAndModifiedFiles)
+	syncedPhotosStream := s.syncWithRemoteStorage(ctx, logctx, photosStream)
 	s.saveToDb(ctx, syncedPhotosStream)
 }
 
@@ -91,10 +91,11 @@ func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan *dom
 	}
 }
 
-func (s *Service) syncWithRemoteStorage(ctx context.Context, metadataStream <-chan *domain.Photo) <-chan *domain.Photo {
-
+func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interface, metadataStream <-chan *domain.Photo) <-chan *domain.Photo {
 	uploadedPhotosStream := make(chan *domain.Photo)
-
+	logctx = log.WithFields(log.Fields{
+		"action": "sync_with_remote_storage",
+	})
 	go func() {
 		limiter := make(chan struct{}, s.maxConcurrentUploads)
 		var wg sync.WaitGroup
@@ -111,8 +112,8 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, metadataStream <-ch
 				go func(m *domain.Photo) {
 					defer wg.Done()
 					defer func() { <-limiter }()
-					s.uploadPhoto(ctx, m)
-					s.uploadThumb(ctx, m)
+					s.uploadPhoto(ctx, logctx, m)
+					s.uploadThumb(ctx, logctx, m)
 					uploadedPhotosStream <- m
 				}(metaData)
 			case <-ctx.Done():
@@ -124,11 +125,10 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, metadataStream <-ch
 	return uploadedPhotosStream
 }
 
-func (s *Service) uploadPhoto(ctx context.Context, img *domain.Photo) {
-	logctx := log.WithFields(log.Fields{
-		"photoFilePath": img.FilePath,
+func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img *domain.Photo) {
+	logctx = log.WithFields(log.Fields{
+		"photo_path": img.FilePath,
 	})
-	defer logctx.Trace("uploading")
 	c, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	f, err := s.localstrg.NewReader(c, img.FilePath)
@@ -150,11 +150,10 @@ func (s *Service) uploadPhoto(ctx context.Context, img *domain.Photo) {
 	}
 }
 
-func (s *Service) uploadThumb(ctx context.Context, img *domain.Photo) {
-	logctx := log.WithFields(log.Fields{
-		"thumbFilePath": img.FilePath,
+func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img *domain.Photo) {
+	logctx = log.WithFields(log.Fields{
+		"thumb_path": img.FilePath,
 	})
-	defer logctx.Trace("uploading")
 	c, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 

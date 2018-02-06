@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/marpio/img-store/domain"
-	"github.com/marpio/img-store/localstorage"
+	"github.com/marpio/mirror/domain"
+	"github.com/marpio/mirror/localstorage"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
 )
@@ -24,21 +24,28 @@ func NewExtractor(rd domain.StorageReadSeeker) domain.Extractor {
 	return &extractor{rd: rd}
 }
 
-func (s extractor) Extract(ctx context.Context, files []*domain.FileInfo) <-chan *domain.Photo {
+func (s extractor) Extract(ctx context.Context, logctx log.Interface, files []*domain.FileInfo) <-chan *domain.Photo {
 	pathsGroupedByDir := localstorage.GroupByDir(files)
 	metadataStream := make(chan *domain.Photo, 100)
+
 	go func() {
 		defer close(metadataStream)
 		var wg sync.WaitGroup
 		wg.Add(len(pathsGroupedByDir))
-		for _, paths := range pathsGroupedByDir {
+		for dir, paths := range pathsGroupedByDir {
 			select {
 			case <-ctx.Done():
 				break
 			default:
 				go func(ps []*domain.FileInfo) {
+					loger := logctx.WithFields(log.Fields{
+						"extracting_metadata_dir": dir,
+					})
+					loger.Info("starting to extract metadata.")
+
 					defer wg.Done()
-					s.extractMetadataDir(ctx, metadataStream, ps)
+					s.extractMetadataDir(ctx, loger, metadataStream, ps)
+					loger.Info("done extracting metadata.")
 				}(paths)
 			}
 		}
@@ -47,7 +54,7 @@ func (s extractor) Extract(ctx context.Context, files []*domain.FileInfo) <-chan
 	return metadataStream
 }
 
-func (s extractor) extractMetadataDir(ctx context.Context, metadataStream chan<- *domain.Photo, photos []*domain.FileInfo) {
+func (s extractor) extractMetadataDir(ctx context.Context, logctx log.Interface, metadataStream chan<- *domain.Photo, photos []*domain.FileInfo) {
 	dirCreatedAt := time.Time{}
 	md := make([]*domain.Photo, 0, len(photos))
 loop:
@@ -56,8 +63,8 @@ loop:
 		case <-ctx.Done():
 			break loop
 		default:
-			logctx := log.WithFields(log.Fields{
-				"photo": ph.FilePath,
+			logctx = log.WithFields(log.Fields{
+				"photo_path": ph.FilePath,
 			})
 			f, err := s.rd.NewReadSeeker(ctx, ph.FilePath)
 			if err != nil {

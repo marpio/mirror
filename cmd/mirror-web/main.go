@@ -12,11 +12,11 @@ import (
 	"github.com/aymerick/raymond"
 	"github.com/goji/httpauth"
 	"github.com/gorilla/mux"
-	"github.com/marpio/img-store/crypto"
-	"github.com/marpio/img-store/domain"
-	"github.com/marpio/img-store/remotestorage"
-	"github.com/marpio/img-store/remotestorage/b2"
-	"github.com/marpio/img-store/repository/hashmap"
+	"github.com/marpio/mirror/crypto"
+	"github.com/marpio/mirror/domain"
+	"github.com/marpio/mirror/remotestorage"
+	"github.com/marpio/mirror/remotestorage/b2"
+	"github.com/marpio/mirror/repository/hashmap"
 	"github.com/spf13/afero"
 )
 

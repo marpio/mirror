@@ -22,9 +22,9 @@ import (
 
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/text"
-	"github.com/marpio/img-store/crypto"
-	"github.com/marpio/img-store/remotestorage"
-	"github.com/marpio/img-store/remotestorage/b2"
+	"github.com/marpio/mirror/crypto"
+	"github.com/marpio/mirror/remotestorage"
+	"github.com/marpio/mirror/remotestorage/b2"
 	"github.com/spf13/cobra"
 )
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/marpio/img-store/crypto"
-	"github.com/marpio/img-store/domain"
+	"github.com/marpio/mirror/crypto"
+	"github.com/marpio/mirror/domain"
 )
 
 func New(b domain.Storage, c crypto.Service) domain.Storage {

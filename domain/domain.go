@@ -7,6 +7,8 @@ import (
 	"io"
 	"strconv"
 	"time"
+
+	"github.com/apex/log"
 )
 
 type Storage interface {
@@ -60,7 +62,7 @@ type MetadataRepoReader interface {
 }
 
 type Extractor interface {
-	Extract(ctx context.Context, files []*FileInfo) <-chan *Photo
+	Extract(ctx context.Context, logctx log.Interface, files []*FileInfo) <-chan *Photo
 }
 
 type Item interface {

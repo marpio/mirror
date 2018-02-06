@@ -8,7 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marpio/img-store/domain"
+	"github.com/apex/log"
+	"github.com/marpio/mirror/domain"
 	"github.com/spf13/afero"
 )
 
@@ -58,7 +59,7 @@ func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	rs := NewStorageReadSeeker(afs)
 	ex := NewExtractor(rs)
 	files := []*domain.FileInfo{&domain.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample2.jpg"}, &domain.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample.jpg"}}
-	ch := ex.Extract(context.Background(), files)
+	ch := ex.Extract(context.Background(), log.Log, files)
 	for p := range ch {
 		c := p.CreatedAt
 		if !(c.Year() == 2017 && c.Month() == 8 && c.Day() == 25 && c.Hour() == 17 && c.Minute() == 3 && c.Second() == 30) {

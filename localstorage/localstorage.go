@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/marpio/img-store/domain"
+	"github.com/marpio/mirror/domain"
 	"github.com/spf13/afero"
 )
 

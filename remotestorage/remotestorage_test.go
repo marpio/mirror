@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/marpio/img-store/crypto"
-	"github.com/marpio/img-store/remotestorage/filesystem"
+	"github.com/marpio/mirror/crypto"
+	"github.com/marpio/mirror/remotestorage/filesystem"
 	"github.com/spf13/afero"
 )
 

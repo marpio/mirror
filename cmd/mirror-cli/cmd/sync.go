@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -26,13 +25,13 @@ import (
 	"github.com/apex/log/handlers/json"
 	"github.com/apex/log/handlers/multi"
 	"github.com/apex/log/handlers/text"
-	"github.com/marpio/img-store/crypto"
-	"github.com/marpio/img-store/localstorage"
-	"github.com/marpio/img-store/metadata"
-	"github.com/marpio/img-store/remotestorage"
-	"github.com/marpio/img-store/remotestorage/b2"
-	"github.com/marpio/img-store/repository/hashmap"
-	"github.com/marpio/img-store/syncronizer"
+	"github.com/marpio/mirror/crypto"
+	"github.com/marpio/mirror/localstorage"
+	"github.com/marpio/mirror/metadata"
+	"github.com/marpio/mirror/remotestorage"
+	"github.com/marpio/mirror/remotestorage/b2"
+	"github.com/marpio/mirror/repository/hashmap"
+	"github.com/marpio/mirror/syncronizer"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
 )
@@ -56,9 +55,7 @@ func runSync(dir string) {
 		text.New(os.Stderr),
 		json.New(logFile),
 	))
-	logctx := log.WithFields(log.Fields{
-		"dir_to_sync": dir,
-	})
+
 	encryptionKey := os.Getenv("ENCR_KEY")
 	b2id := os.Getenv("B2_ACCOUNT_ID")
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
@@ -71,6 +68,10 @@ func runSync(dir string) {
 
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
+	logctx := log.WithFields(log.Fields{
+		"cmd": "cli",
+		"dir": dir,
+	})
 	go func() {
 		for {
 			select {
@@ -88,8 +89,7 @@ func runSync(dir string) {
 	defer cancel()
 	repo, err := hashmap.New(c, rs, dbPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error creating metadata repository: %v", err)
-		os.Exit(-1)
+		log.Fatalf("error creating metadata repository: %v", err)
 	}
 	appFs := afero.NewOsFs()
 	localFilesRepo := localstorage.NewService(appFs)
@@ -97,7 +97,5 @@ func runSync(dir string) {
 		repo,
 		localFilesRepo,
 		metadata.NewExtractor(localFilesRepo))
-	logctx.Info("sync started.")
-	syncronizer.Execute(ctx, dir)
-	logctx.Info("sync compleated.")
+	syncronizer.Execute(ctx, logctx, dir)
 }
