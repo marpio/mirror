@@ -33,7 +33,12 @@ func (b *rs) NewReader(ctx context.Context, path string) (io.ReadCloser, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &reader{rd: rd, buf: make([]byte, bufSize), bufSize: bufSize, crpt: b.crpt}, nil
+	return &reader{
+		rd:      rd,
+		buf:     make([]byte, bufSize),
+		bufSize: bufSize,
+		crpt:    b.crpt,
+	}, nil
 }
 func (b *reader) readErr() error {
 	err := b.err

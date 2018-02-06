@@ -34,11 +34,19 @@ func WithTimeout(t time.Duration) option {
 }
 
 func New(remotestorage domain.Storage,
-	metadataStore domain.MetadataRepo, localFilesRepo domain.LocalStorage,
+	metadataStore domain.MetadataRepo,
+	localFilesRepo domain.LocalStorage,
 	metadataextr domain.Extractor,
 	options ...option) *Service {
 
-	s := &Service{remotestrg: remotestorage, metadataStore: metadataStore, localstrg: localFilesRepo, metadataextr: metadataextr, maxConcurrentUploads: 10, timeout: time.Minute}
+	s := &Service{
+		remotestrg:           remotestorage,
+		metadataStore:        metadataStore,
+		localstrg:            localFilesRepo,
+		metadataextr:         metadataextr,
+		maxConcurrentUploads: 10,
+		timeout:              time.Minute,
+	}
 	for _, opt := range options {
 		opt(s)
 	}
