@@ -14,7 +14,6 @@
 *.log
 # ENV VARS
 *.env
-# DB
-*.db
-*.db-journal
+# other
 .caddy
+log.json
