@@ -104,7 +104,9 @@ func (b *writer) Write(p []byte) (nn int, err error) {
 		var n int
 		n = copy(b.buf[b.n:], p)
 		b.n += n
-		b.flush()
+		if err := b.flush(); err != nil {
+			return nn, err
+		}
 		nn += n
 		p = p[n:]
 	}

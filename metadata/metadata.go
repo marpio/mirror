@@ -35,9 +35,9 @@ func (s extractor) Extract(ctx context.Context, logctx log.Interface, files []*d
 		for dir, paths := range pathsGroupedByDir {
 			select {
 			case <-ctx.Done():
-				break
+				return
 			default:
-				go func(ps []*domain.FileInfo) {
+				go func(dir string, ps []*domain.FileInfo) {
 					loger := logctx.WithFields(log.Fields{
 						"extracting_metadata_dir": dir,
 					})
@@ -46,7 +46,7 @@ func (s extractor) Extract(ctx context.Context, logctx log.Interface, files []*d
 					defer wg.Done()
 					s.extractMetadataDir(ctx, loger, metadataStream, ps)
 					loger.Info("done extracting metadata.")
-				}(paths)
+				}(dir, paths)
 			}
 		}
 		wg.Wait()
@@ -59,37 +59,32 @@ func (s extractor) extractMetadataDir(ctx context.Context, logctx log.Interface,
 	md := make([]*domain.Photo, 0, len(photos))
 loop:
 	for _, ph := range photos {
-		select {
-		case <-ctx.Done():
-			break loop
-		default:
-			logctx = log.WithFields(log.Fields{
-				"photo_path": ph.FilePath,
-			})
-			f, err := s.rd.NewReadSeeker(ctx, ph.FilePath)
-			if err != nil {
-				logctx.WithError(err)
-				continue loop
-			}
-			defer f.Close()
-
-			createdAt, err := extractCreatedAt(f)
-			if err != nil {
-				logctx.WithError(err)
-				continue loop
-			} else {
-				dirCreatedAt = createdAt
-			}
-			f.Seek(0, 0)
-			thumb, err := extractThumb(f)
-			if err != nil {
-				logctx.WithError(err)
-				continue loop
-			}
-
-			p := &domain.Photo{FileInfo: ph, Metadata: &domain.Metadata{CreatedAt: createdAt, Thumbnail: thumb}}
-			md = append(md, p)
+		logctx = log.WithFields(log.Fields{
+			"photo_path": ph.FilePath,
+		})
+		f, err := s.rd.NewReadSeeker(ctx, ph.FilePath)
+		if err != nil {
+			logctx.WithError(err)
+			continue loop
 		}
+		defer f.Close()
+
+		createdAt, err := extractCreatedAt(f)
+		if err != nil {
+			logctx.WithError(err)
+			continue loop
+		} else {
+			dirCreatedAt = createdAt
+		}
+		f.Seek(0, 0)
+		thumb, err := extractThumb(f)
+		if err != nil {
+			logctx.WithError(err)
+			continue loop
+		}
+
+		p := &domain.Photo{FileInfo: ph, Metadata: &domain.Metadata{CreatedAt: createdAt, Thumbnail: thumb}}
+		md = append(md, p)
 	}
 	for _, meta := range md {
 		if (meta.CreatedAt == time.Time{}) {

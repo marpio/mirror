@@ -45,7 +45,7 @@ func New(remotestorage domain.Storage,
 		localstrg:            localFilesRepo,
 		metadataextr:         metadataextr,
 		maxConcurrentUploads: 10,
-		timeout:              time.Minute,
+		timeout:              1 * time.Minute,
 	}
 	for _, opt := range options {
 		opt(s)
@@ -68,7 +68,7 @@ func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath st
 	}
 
 	newAndModifiedFiles := s.localstrg.SearchFiles(rootPath, filterFn, ".jpg", ".jpeg")
-	logctx.Infof("%d element to sync.", len(newAndModifiedFiles))
+	logctx.Infof("%d element(s) to sync.", len(newAndModifiedFiles))
 	photosStream := s.metadataextr.Extract(ctx, logctx, newAndModifiedFiles)
 	syncedPhotosStream := s.syncWithRemoteStorage(ctx, logctx, photosStream)
 	s.saveToDb(ctx, syncedPhotosStream)
@@ -81,19 +81,12 @@ func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan *dom
 			if more {
 				s.metadataStore.Add(p)
 			} else {
-				c, cancel := context.WithTimeout(ctx, time.Minute)
-				defer cancel()
-				if err := s.metadataStore.Persist(c); err != nil {
+				if err := s.metadataStore.Persist(ctx); err != nil {
 					log.Fatalf("error commiting to DB %v", err)
 				}
 				return
 			}
 		case <-ctx.Done():
-			c, cancel := context.WithTimeout(ctx, time.Minute)
-			defer cancel()
-			if err := s.metadataStore.Persist(c); err != nil {
-				log.Fatalf("error commiting to DB %v", err)
-			}
 			return
 		}
 	}
@@ -101,7 +94,7 @@ func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan *dom
 
 func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interface, metadataStream <-chan *domain.Photo) <-chan *domain.Photo {
 	uploadedPhotosStream := make(chan *domain.Photo)
-	logctx = log.WithFields(log.Fields{
+	logctx = logctx.WithFields(log.Fields{
 		"action": "sync_with_remote_storage",
 	})
 	go func() {
@@ -120,12 +113,18 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 				go func(m *domain.Photo) {
 					defer wg.Done()
 					defer func() { <-limiter }()
-					s.uploadPhoto(ctx, logctx, m)
-					s.uploadThumb(ctx, logctx, m)
-					uploadedPhotosStream <- m
+					logctx = logctx.WithFields(log.Fields{
+						"photo_path": m.FilePath,
+					})
+					c, cancel := context.WithTimeout(ctx, s.timeout)
+					defer cancel()
+					if err := s.uploadPhoto(c, logctx, m); err == nil {
+						s.uploadThumb(c, logctx, m)
+						uploadedPhotosStream <- m
+					}
 				}(metaData)
 			case <-ctx.Done():
-				break loop
+				return
 			}
 		}
 		wg.Wait()
@@ -133,39 +132,32 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 	return uploadedPhotosStream
 }
 
-func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img *domain.Photo) {
-	logctx = log.WithFields(log.Fields{
-		"photo_path": img.FilePath,
-	})
-	c, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-	f, err := s.localstrg.NewReader(c, img.FilePath)
+func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img *domain.Photo) error {
+	logctx.Info("uploading photo.")
+	f, err := s.localstrg.NewReader(ctx, img.FilePath)
 	if err != nil {
 		logctx.WithError(err)
-		return
+		return err
 	}
 	defer f.Close()
 
-	w := s.remotestrg.NewWriter(c, img.ID())
+	w := s.remotestrg.NewWriter(ctx, img.ID())
 	_, err = io.Copy(w, f)
 	if err != nil {
 		logctx.WithError(err)
-		return
+		return err
 	}
 	if err := w.Close(); err != nil {
 		logctx.WithError(err)
-		return
+		return err
 	}
+	logctx.Info("photo upload complete.")
+	return nil
 }
 
 func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img *domain.Photo) {
-	logctx = log.WithFields(log.Fields{
-		"thumb_path": img.FilePath,
-	})
-	c, cancel := context.WithTimeout(ctx, s.timeout)
-	defer cancel()
-
-	w := s.remotestrg.NewWriter(c, img.ThumbID())
+	logctx.Info("uploading thumb.")
+	w := s.remotestrg.NewWriter(ctx, img.ThumbID())
 	_, err := io.Copy(w, bytes.NewReader(img.Thumbnail))
 	if err != nil {
 		logctx.WithError(err)
@@ -175,4 +167,5 @@ func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img *do
 		logctx.WithError(err)
 		return
 	}
+	logctx.Info("thumb upload complete.")
 }

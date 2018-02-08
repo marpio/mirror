@@ -8,8 +8,8 @@ import (
 var encKey = "b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"
 
 func TestEncrypt(t *testing.T) {
-	var data [80000]byte
-	for i := 0; i < 80000; i++ {
+	var data [800000]byte
+	for i := 0; i < 800000; i++ {
 		data[i] = 100
 	}
 

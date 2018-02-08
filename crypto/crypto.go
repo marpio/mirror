@@ -30,7 +30,7 @@ func WithBlockSize(blockSize int) option {
 }
 
 func NewService(encryptionKey string, options ...option) Service {
-	cs := &srv{encryptionKey: encryptionKey, blockSize: 64 * 1024}
+	cs := &srv{encryptionKey: encryptionKey, blockSize: 128 * 1024}
 	for _, opt := range options {
 		opt(cs)
 	}

@@ -19,7 +19,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/json"
@@ -76,29 +75,30 @@ func runSync(dir string) {
 
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	logctx := log.WithFields(log.Fields{
-		"cmd": "cli",
-		"dir": dir,
+		"cmd":         "mirror-cli",
+		"syncing_dir": dir,
 	})
-	go func() {
-		for {
-			select {
-			case <-sigs:
-				logctx.Warn("process terminated. syscall.SIGINT or syscall.SIGTERM.")
-				cancel()
-			}
-		}
-	}()
 
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
 	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
 
-	c, cancel := context.WithTimeout(ctx, time.Minute)
-	defer cancel()
-	repo, err := hashmap.New(c, rs, dbPath)
+	repo, err := hashmap.New(ctx, rs, dbPath)
 	if err != nil {
 		log.Fatalf("error creating metadata repository: %v", err)
 	}
+	go func() {
+		for {
+			select {
+			case <-sigs:
+				logctx.Warn("SIGINT or SIGTERM - saving and terminating...")
+				repo.Persist(ctx)
+				cancel()
+				return
+			}
+		}
+	}()
 	appFs := afero.NewOsFs()
 	localFilesRepo := localstorage.NewService(appFs)
 	syncronizer := syncronizer.New(rs,
@@ -106,4 +106,5 @@ func runSync(dir string) {
 		localFilesRepo,
 		metadata.NewExtractor(localFilesRepo))
 	syncronizer.Execute(ctx, logctx, dir)
+	logctx.Info("done syncing.")
 }
