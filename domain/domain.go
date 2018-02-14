@@ -62,7 +62,7 @@ type MetadataRepoReader interface {
 }
 
 type Extractor interface {
-	Extract(ctx context.Context, logctx log.Interface, files []*FileInfo) <-chan *Photo
+	Extract(ctx context.Context, logctx log.Interface, files []*FileInfo) <-chan Photo
 }
 
 type Item interface {
@@ -74,6 +74,7 @@ type Item interface {
 
 type FileInfo struct {
 	FilePath    string
+	FileExt     string
 	FileModTime time.Time
 }
 
@@ -82,9 +83,55 @@ type Metadata struct {
 	Thumbnail []byte
 }
 
-type Photo struct {
+type Photo interface {
+	ID() string
+	ThumbID() string
+	FilePath() string
+	FileModTime() time.Time
+	CreatedAt() time.Time
+	SetCreatedAt(t time.Time)
+	Thumbnail() []byte
+	NewJpgReader() (io.ReadCloser, error)
+	Dir() string
+	ModTimeHash() string
+}
+
+type photo struct {
 	*FileInfo
 	*Metadata
+	jpegReaderProvider func() (io.ReadCloser, error)
+}
+
+func (ph *photo) FilePath() string {
+	return ph.FileInfo.FilePath
+}
+
+func (ph *photo) FileModTime() time.Time {
+	return ph.FileInfo.FileModTime
+}
+
+func (ph *photo) CreatedAt() time.Time {
+	return ph.Metadata.CreatedAt
+}
+
+func (ph *photo) SetCreatedAt(t time.Time) {
+	ph.Metadata.CreatedAt = t
+}
+
+func (ph *photo) Thumbnail() []byte {
+	return ph.Metadata.Thumbnail
+}
+
+func (ph *photo) NewJpgReader() (io.ReadCloser, error) {
+	return ph.jpegReaderProvider()
+}
+
+func NewPhoto(fi *FileInfo, meta *Metadata, jpegReaderProvider func() (io.ReadCloser, error)) Photo {
+	return &photo{
+		FileInfo:           fi,
+		Metadata:           meta,
+		jpegReaderProvider: jpegReaderProvider,
+	}
 }
 
 func (p *FileInfo) ID() string {
@@ -95,12 +142,12 @@ func (p *FileInfo) ModTimeHash() string {
 	return genHash(strconv.FormatInt(p.FileModTime.UnixNano(), 10))
 }
 
-func (p *Photo) ThumbID() string {
+func (p *photo) ThumbID() string {
 	return "thumb_" + p.ID()
 }
 
-func (p *Photo) Dir() string {
-	return fmt.Sprintf("%d-%02d", p.CreatedAt.Year(), p.CreatedAt.Month())
+func (p *photo) Dir() string {
+	return fmt.Sprintf("%d-%02d", p.CreatedAt().Year(), p.CreatedAt().Month())
 }
 
 func genHash(s string) string {

@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -30,12 +31,12 @@ func (repo *srv) NewReadSeeker(ctx context.Context, path string) (domain.ReadClo
 
 func (repo *srv) SearchFiles(rootPath string, filter func(*domain.FileInfo) bool, fileExt ...string) []*domain.FileInfo {
 	files := make([]*domain.FileInfo, 0)
-	err := afero.Walk(repo.fs, rootPath, func(path string, fi os.FileInfo, err error) error {
+	err := afero.Walk(repo.fs, rootPath, func(pth string, fi os.FileInfo, err error) error {
 
 		if err != nil {
 			log.Printf("Error while walking the directory structure: %v", err)
 		}
-		isDir, err := afero.IsDir(repo.fs, path)
+		isDir, err := afero.IsDir(repo.fs, pth)
 
 		if err != nil {
 			return err
@@ -51,7 +52,7 @@ func (repo *srv) SearchFiles(rootPath string, filter func(*domain.FileInfo) bool
 			}
 		}
 		if hasExt {
-			finf := &domain.FileInfo{FilePath: path, FileModTime: fi.ModTime()}
+			finf := &domain.FileInfo{FilePath: pth, FileModTime: fi.ModTime(), FileExt: path.Ext(pth)}
 
 			if filter(finf) {
 				files = append(files, finf)

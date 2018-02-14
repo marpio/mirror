@@ -67,14 +67,14 @@ func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath st
 		return isModified
 	}
 
-	newAndModifiedFiles := s.localstrg.SearchFiles(rootPath, filterFn, ".jpg", ".jpeg")
+	newAndModifiedFiles := s.localstrg.SearchFiles(rootPath, filterFn, ".jpg", ".jpeg", ".nef")
 	logctx.Infof("%d element(s) to sync.", len(newAndModifiedFiles))
 	photosStream := s.metadataextr.Extract(ctx, logctx, newAndModifiedFiles)
 	syncedPhotosStream := s.syncWithRemoteStorage(ctx, logctx, photosStream)
 	s.saveToDb(ctx, syncedPhotosStream)
 }
 
-func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan *domain.Photo) {
+func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan domain.Photo) {
 	for {
 		select {
 		case p, more := <-uploadedPhotosStream:
@@ -92,8 +92,8 @@ func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan *dom
 	}
 }
 
-func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interface, metadataStream <-chan *domain.Photo) <-chan *domain.Photo {
-	uploadedPhotosStream := make(chan *domain.Photo)
+func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interface, metadataStream <-chan domain.Photo) <-chan domain.Photo {
+	uploadedPhotosStream := make(chan domain.Photo)
 	logctx = logctx.WithFields(log.Fields{
 		"action": "sync_with_remote_storage",
 	})
@@ -110,11 +110,11 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 				}
 				limiter <- struct{}{}
 				wg.Add(1)
-				go func(m *domain.Photo) {
+				go func(m domain.Photo) {
 					defer wg.Done()
 					defer func() { <-limiter }()
 					logctx = logctx.WithFields(log.Fields{
-						"photo_path": m.FilePath,
+						"photo_path": m.FilePath(),
 					})
 					c, cancel := context.WithTimeout(ctx, s.timeout)
 					defer cancel()
@@ -132,9 +132,9 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 	return uploadedPhotosStream
 }
 
-func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img *domain.Photo) error {
+func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img domain.Photo) error {
 	logctx.Info("uploading photo.")
-	f, err := s.localstrg.NewReader(ctx, img.FilePath)
+	f, err := img.NewJpgReader()
 	if err != nil {
 		logctx.WithError(err)
 		return err
@@ -155,10 +155,10 @@ func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img *do
 	return nil
 }
 
-func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img *domain.Photo) {
+func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img domain.Photo) {
 	logctx.Info("uploading thumb.")
 	w := s.remotestrg.NewWriter(ctx, img.ThumbID())
-	_, err := io.Copy(w, bytes.NewReader(img.Thumbnail))
+	_, err := io.Copy(w, bytes.NewReader(img.Thumbnail()))
 	if err != nil {
 		logctx.WithError(err)
 		return

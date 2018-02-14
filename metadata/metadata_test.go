@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"context"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"testing"
@@ -26,6 +27,33 @@ func TestThumbnail(t *testing.T) {
 	mimeType := http.DetectContentType(buff)
 	if mimeType != "image/jpeg" {
 		t.Error("Thumbnail is not a jpeg file.")
+	}
+}
+
+func TestThumbnail_NEF(t *testing.T) {
+	p := "../test/sample3.NEF"
+
+	thumb, err := extractThumbNEF(p)
+	if err != nil {
+		t.Error(err)
+	}
+	mimeType := http.DetectContentType(thumb)
+	if mimeType != "image/jpeg" {
+		t.Errorf("Thumbnail is not a jpeg file. It is: %v", mimeType)
+	}
+}
+
+func TestJpeg_NEF(t *testing.T) {
+	p := "../test/sample3.NEF"
+
+	r, err := extractJpgNEF(p)
+	if err != nil {
+		t.Error(err)
+	}
+	img, _ := ioutil.ReadAll(r)
+	mimeType := http.DetectContentType(img)
+	if mimeType != "image/jpeg" {
+		t.Errorf("Thumbnail is not a jpeg file. It is: %v", mimeType)
 	}
 }
 
@@ -54,6 +82,17 @@ func TestCreatedAt(t *testing.T) {
 	}
 }
 
+func TestCreatedAt_NEF(t *testing.T) {
+	p := "../test/sample3.NEF"
+	r, _ := os.Open(p)
+	defer r.Close()
+	c, _ := extractCreatedAt(r)
+
+	if !(c.Year() == 2018 && c.Month() == 1 && c.Day() == 1 && c.Hour() == 14 && c.Minute() == 56 && c.Second() == 48) {
+		t.Error("Extracting CreatedAt failed.")
+	}
+}
+
 func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	afs := afero.NewOsFs()
 	rs := NewStorageReadSeeker(afs)
@@ -61,7 +100,7 @@ func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	files := []*domain.FileInfo{&domain.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample2.jpg"}, &domain.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample.jpg"}}
 	ch := ex.Extract(context.Background(), log.Log, files)
 	for p := range ch {
-		c := p.CreatedAt
+		c := p.CreatedAt()
 		if !(c.Year() == 2017 && c.Month() == 8 && c.Day() == 25 && c.Hour() == 17 && c.Minute() == 3 && c.Second() == 30) {
 			t.Error("Extracting CreatedAt failed.")
 		}
