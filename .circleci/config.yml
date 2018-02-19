@@ -17,6 +17,7 @@ jobs:
           command: |
             go build ./cmd/...
       - run: mkdir -p $TEST_RESULTS
+      - run: apt-get install libimage-exiftool-perl perl-doc 
       - run:
           name: Run unit tests and code cov
           command: |
