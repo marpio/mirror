@@ -1,7 +1,9 @@
 package hashmap
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"testing"
 	"time"
 
@@ -13,14 +15,26 @@ import (
 	"github.com/spf13/afero"
 )
 
+type nopCloser struct {
+	io.Reader
+}
+
+func (nopCloser) Close() error { return nil }
+
 var ctx context.Context = context.Background()
 
 func TestExists(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	p2 := "/path/to/file2"
-	ph1 := &domain.Photo{FileInfo: &domain.FileInfo{FilePath: p}, Metadata: &domain.Metadata{CreatedAt: time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)}}
-	ph2 := &domain.Photo{FileInfo: &domain.FileInfo{FilePath: p2}, Metadata: &domain.Metadata{CreatedAt: time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)}}
+	ph1 := domain.NewPhoto(
+		&domain.FileInfo{FilePath: p},
+		&domain.Metadata{CreatedAt: time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)},
+		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
+	ph2 := domain.NewPhoto(
+		&domain.FileInfo{FilePath: p2},
+		&domain.Metadata{CreatedAt: time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)},
+		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(ph1)
 	s.Add(ph2)
 	exists, _ := s.Exists(ph1.ID())
@@ -33,7 +47,11 @@ func TestGetByDir(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	s.Add(&domain.Photo{FileInfo: &domain.FileInfo{FilePath: p}, Metadata: &domain.Metadata{CreatedAt: m}})
+	ph := domain.NewPhoto(
+		&domain.FileInfo{FilePath: p},
+		&domain.Metadata{CreatedAt: m},
+		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
+	s.Add(ph)
 	r, _ := s.GetByDir("2017-05")
 	if len(r) != 1 || r[0].Dir() != "2017-05" {
 		t.Errorf("Expected one result, got: %v", len(r))
@@ -46,8 +64,16 @@ func TestGetMonths(t *testing.T) {
 	p2 := "/path/to/file2"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 	m2 := time.Date(2017, 6, 1, 0, 0, 0, 0, time.UTC)
-	s.Add(&domain.Photo{FileInfo: &domain.FileInfo{FilePath: p}, Metadata: &domain.Metadata{CreatedAt: m}})
-	s.Add(&domain.Photo{FileInfo: &domain.FileInfo{FilePath: p2}, Metadata: &domain.Metadata{CreatedAt: m2}})
+	ph1 := domain.NewPhoto(
+		&domain.FileInfo{FilePath: p},
+		&domain.Metadata{CreatedAt: m},
+		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
+	ph2 := domain.NewPhoto(
+		&domain.FileInfo{FilePath: p2},
+		&domain.Metadata{CreatedAt: m2},
+		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
+	s.Add(ph1)
+	s.Add(ph2)
 	r, _ := s.GetDirs()
 	if len(r) != 2 {
 		t.Errorf("Expected 2 results, got: %v", len(r))
@@ -61,7 +87,10 @@ func TestDelete(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	p1 := &domain.Photo{FileInfo: &domain.FileInfo{FilePath: p}, Metadata: &domain.Metadata{CreatedAt: m}}
+	p1 := domain.NewPhoto(
+		&domain.FileInfo{FilePath: p},
+		&domain.Metadata{CreatedAt: m},
+		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(p1)
 	s.Delete(p1.ID())
 	exst, _ := s.Exists(p1.ID())
@@ -74,7 +103,10 @@ func TestPersist(t *testing.T) {
 	s, afs := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	p1 := &domain.Photo{FileInfo: &domain.FileInfo{FilePath: p}, Metadata: &domain.Metadata{CreatedAt: m}}
+	p1 := domain.NewPhoto(
+		&domain.FileInfo{FilePath: p},
+		&domain.Metadata{CreatedAt: m},
+		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(p1)
 
 	s.Persist(ctx)
@@ -91,7 +123,10 @@ func TestReload(t *testing.T) {
 	s, afs := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	p1 := &domain.Photo{FileInfo: &domain.FileInfo{FilePath: p}, Metadata: &domain.Metadata{CreatedAt: m}}
+	p1 := domain.NewPhoto(
+		&domain.FileInfo{FilePath: p},
+		&domain.Metadata{CreatedAt: m},
+		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(p1)
 	s.Persist(ctx)
 
