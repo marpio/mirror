@@ -3,7 +3,7 @@ jobs:
   build:
     docker:
       # CircleCI Go images available at: https://hub.docker.com/r/circleci/golang/
-      - image: circleci/golang:1.9
+      - image: circleci/golang:1.10
 
     working_directory: /go/src/github.com/marpio/mirror
 
@@ -17,7 +17,7 @@ jobs:
           command: |
             go build ./cmd/...
       - run: mkdir -p $TEST_RESULTS
-      - run: apt-get install libimage-exiftool-perl perl-doc 
+      - run: sudo apt-get install libimage-exiftool-perl perl-doc 
       - run:
           name: Run unit tests and code cov
           command: |
