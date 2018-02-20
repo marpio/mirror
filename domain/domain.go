@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"io"
-	"strconv"
+	"io/ioutil"
 	"time"
 
 	"github.com/apex/log"
@@ -33,7 +33,7 @@ type StorageWriter interface {
 type LocalStorage interface {
 	StorageReader
 	StorageReadSeeker
-	SearchFiles(rootPath string, filter func(*FileInfo) bool, fileExt ...string) []*FileInfo
+	SearchFiles(rootPath string, isNewFilter func(*FileInfo) bool, fileExt ...string) ([]*FileInfo, []*FileInfo)
 }
 
 type ReadCloseSeeker interface {
@@ -53,8 +53,8 @@ type MetadataRepoWriter interface {
 }
 
 type MetadataRepoReader interface {
+	GetAll() []Item
 	Exists(id string) (bool, error)
-	GetModTime(id string) (string, error)
 	GetByDir(name string) ([]Item, error)
 	GetByDirAndId(dir, id string) (Item, error)
 	GetDirs() ([]string, error)
@@ -69,13 +69,12 @@ type Item interface {
 	ID() string
 	ThumbID() string
 	Dir() string
-	ModTimeHash() string
 }
 
 type FileInfo struct {
-	FilePath    string
-	FileExt     string
-	FileModTime time.Time
+	id       string
+	FilePath string
+	FileExt  string
 }
 
 type Metadata struct {
@@ -87,13 +86,11 @@ type Photo interface {
 	ID() string
 	ThumbID() string
 	FilePath() string
-	FileModTime() time.Time
 	CreatedAt() time.Time
 	SetCreatedAt(t time.Time)
 	Thumbnail() []byte
 	NewJpgReader() (io.ReadCloser, error)
 	Dir() string
-	ModTimeHash() string
 }
 
 type photo struct {
@@ -104,10 +101,6 @@ type photo struct {
 
 func (ph *photo) FilePath() string {
 	return ph.FileInfo.FilePath
-}
-
-func (ph *photo) FileModTime() time.Time {
-	return ph.FileInfo.FileModTime
 }
 
 func (ph *photo) CreatedAt() time.Time {
@@ -135,11 +128,16 @@ func NewPhoto(fi *FileInfo, meta *Metadata, jpegReaderProvider func() (io.ReadCl
 }
 
 func (p *FileInfo) ID() string {
-	return genHash(p.FilePath)
-}
-
-func (p *FileInfo) ModTimeHash() string {
-	return genHash(strconv.FormatInt(p.FileModTime.UnixNano(), 10))
+	if p.id != "" {
+		return p.id
+	}
+	b, err := ioutil.ReadFile(p.FilePath)
+	if err != nil {
+		return ""
+	}
+	h := sha256.Sum256(b)
+	p.id = fmt.Sprintf("%x", h)
+	return p.id
 }
 
 func (p *photo) ThumbID() string {
@@ -148,10 +146,4 @@ func (p *photo) ThumbID() string {
 
 func (p *photo) Dir() string {
 	return fmt.Sprintf("%d-%02d", p.CreatedAt().Year(), p.CreatedAt().Month())
-}
-
-func genHash(s string) string {
-	h := sha256.Sum256([]byte(s))
-	hex := fmt.Sprintf("%x", h)
-	return hex
 }

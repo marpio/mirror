@@ -23,10 +23,6 @@ func (it item) ThumbID() string {
 	return "thumb_" + it.ID()
 }
 
-func (it item) ModTimeHash() string {
-	return it.FileModTime
-}
-
 func (it item) Dir() string {
 	return it.Directory
 }
@@ -103,14 +99,6 @@ func (s *hashmapStore) Exists(id string) (bool, error) {
 	return (found != nil), nil
 }
 
-func (s *hashmapStore) GetModTime(id string) (string, error) {
-	found := s.getByID(id)
-	if found != nil {
-		return found.FileModTime, nil
-	}
-	return "", fmt.Errorf("element with id: %v not found", id)
-}
-
 func (s *hashmapStore) getByID(id string) *item {
 	for _, d := range s.data {
 		if p, ok := d[id]; ok {
@@ -121,7 +109,7 @@ func (s *hashmapStore) getByID(id string) *item {
 }
 
 func (s *hashmapStore) Add(it domain.Item) error {
-	x := &item{FileID: it.ID(), Directory: it.Dir(), FileModTime: it.ModTimeHash()}
+	x := &item{FileID: it.ID(), Directory: it.Dir()}
 	if _, ok := s.data[x.Directory]; !ok {
 		s.data[x.Directory] = make(map[string]*item)
 	}
@@ -138,6 +126,16 @@ func (s *hashmapStore) Persist(ctx context.Context) error {
 	en.SetIndent("", "    ")
 	en.Encode(s.data)
 	return nil
+}
+
+func (s *hashmapStore) GetAll() []domain.Item {
+	var res = make([]domain.Item, 0)
+	for _, d := range s.data {
+		for _, p := range d {
+			res = append(res, p)
+		}
+	}
+	return res
 }
 
 func (s *hashmapStore) Delete(id string) error {

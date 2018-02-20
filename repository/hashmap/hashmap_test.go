@@ -23,6 +23,20 @@ func (nopCloser) Close() error { return nil }
 
 var ctx context.Context = context.Background()
 
+const dbPath string = "domain.db"
+const key string = "b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"
+
+func setup() (domain.MetadataRepo, afero.Fs) {
+	afs := afero.NewMemMapFs()
+	s, afs := initRepo(afs)
+	return s, afs
+}
+
+func initRepo(afs afero.Fs) (domain.MetadataRepo, afero.Fs) {
+	b := remotestorage.New(filesystem.New(afs), crypto.NewService(key))
+	s, _ := New(ctx, b, dbPath)
+	return s, afs
+}
 func TestExists(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
@@ -58,7 +72,7 @@ func TestGetByDir(t *testing.T) {
 	}
 }
 
-func TestGetMonths(t *testing.T) {
+func TestGetDirs(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	p2 := "/path/to/file2"
@@ -110,8 +124,7 @@ func TestPersist(t *testing.T) {
 	s.Add(p1)
 
 	s.Persist(ctx)
-	dbPath := "domain.db"
-	s2 := setup2(afs, dbPath)
+	s2, _ := initRepo(afs)
 	exists, _ := s2.Exists(p1.ID())
 	if !exists {
 		t.Error("expected to find one item")
@@ -132,7 +145,7 @@ func TestReload(t *testing.T) {
 
 	afs.Rename(dbPath, "photo2.db")
 
-	s2 := setup2(afs, dbPath)
+	s2, _ := initRepo(afs)
 	exists, _ := s2.Exists(p1.ID())
 	if exists {
 		t.Error("expected not to find anything")
@@ -144,19 +157,4 @@ func TestReload(t *testing.T) {
 	if !exists {
 		t.Error("expected to find one item")
 	}
-}
-
-func setup() (domain.MetadataRepo, afero.Fs) {
-	afs := afero.NewMemMapFs()
-	b := remotestorage.New(filesystem.New(afs), crypto.NewService("b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"))
-	dbPath := "domain.db"
-
-	s, _ := New(ctx, b, dbPath)
-	return s, afs
-}
-
-func setup2(afs afero.Fs, dbPath string) domain.MetadataRepo {
-	b := remotestorage.New(filesystem.New(afs), crypto.NewService("b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"))
-	s, _ := New(ctx, b, dbPath)
-	return s
 }

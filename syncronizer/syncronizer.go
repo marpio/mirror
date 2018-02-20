@@ -54,24 +54,36 @@ func New(remotestorage domain.Storage,
 }
 
 func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath string) {
-	filterFn := func(it *domain.FileInfo) bool {
-		exists, _ := s.metadataStore.Exists(it.ID())
-		if !exists {
-			return true
+	isNewfilterFn := func(fi *domain.FileInfo) bool {
+		exists, err := s.metadataStore.Exists(fi.ID())
+		if err != nil {
+			return false
 		}
-		modTime, _ := s.metadataStore.GetModTime(it.ID())
-		isModified := modTime != it.ModTimeHash()
-		if isModified {
-			s.metadataStore.Delete(it.ID())
-		}
-		return isModified
+		return !exists
 	}
 
-	newAndModifiedFiles := s.localstrg.SearchFiles(rootPath, filterFn, ".jpg", ".jpeg", ".nef")
-	logctx.Infof("%d element(s) to sync.", len(newAndModifiedFiles))
-	photosStream := s.metadataextr.Extract(ctx, logctx, newAndModifiedFiles)
+	newFiles, oldFiles := s.localstrg.SearchFiles(rootPath, isNewfilterFn, ".jpg", ".jpeg", ".nef")
+	logctx.Infof("%d element(s) to sync.", len(newFiles))
+	photosStream := s.metadataextr.Extract(ctx, logctx, newFiles)
 	syncedPhotosStream := s.syncWithRemoteStorage(ctx, logctx, photosStream)
 	s.saveToDb(ctx, syncedPhotosStream)
+	allFiles := make(map[string]struct{})
+	for _, fi := range newFiles {
+		if _, ok := allFiles[fi.ID()]; !ok {
+			allFiles[fi.ID()] = struct{}{}
+		}
+	}
+	for _, fi := range oldFiles {
+		if _, ok := allFiles[fi.ID()]; !ok {
+			allFiles[fi.ID()] = struct{}{}
+		}
+	}
+	for _, f := range s.metadataStore.GetAll() {
+		if _, ok := allFiles[f.ID()]; !ok {
+			s.metadataStore.Delete(f.ID())
+			s.remotestrg.Delete(ctx, f.ID())
+		}
+	}
 }
 
 func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan domain.Photo) {
