@@ -29,9 +29,8 @@ func (repo *srv) NewReadSeeker(ctx context.Context, path string) (domain.ReadClo
 	return repo.fs.Open(path)
 }
 
-func (repo *srv) SearchFiles(rootPath string, isNewFilter func(*domain.FileInfo) bool, fileExt ...string) ([]*domain.FileInfo, []*domain.FileInfo) {
-	newFiles := make([]*domain.FileInfo, 0)
-	oldFiles := make([]*domain.FileInfo, 0)
+func (repo *srv) SearchFiles(rootPath string, fileExt ...string) []*domain.FileInfo {
+	files := make([]*domain.FileInfo, 0)
 	err := afero.Walk(repo.fs, rootPath, func(pth string, fi os.FileInfo, err error) error {
 
 		if err != nil {
@@ -54,19 +53,15 @@ func (repo *srv) SearchFiles(rootPath string, isNewFilter func(*domain.FileInfo)
 		}
 		if hasExt {
 			finf := &domain.FileInfo{FilePath: pth, FileExt: path.Ext(pth)}
+			files = append(files, finf)
 
-			if isNewFilter(finf) {
-				newFiles = append(newFiles, finf)
-			} else {
-				oldFiles = append(oldFiles, finf)
-			}
 		}
 		return nil
 	})
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
-	return newFiles, oldFiles
+	return files
 }
 
 func GenerateUniqueFileName(prefix string, id string) string {

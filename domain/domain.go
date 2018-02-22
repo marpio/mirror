@@ -33,7 +33,7 @@ type StorageWriter interface {
 type LocalStorage interface {
 	StorageReader
 	StorageReadSeeker
-	SearchFiles(rootPath string, isNewFilter func(*FileInfo) bool, fileExt ...string) ([]*FileInfo, []*FileInfo)
+	SearchFiles(rootPath string, fileExt ...string) []*FileInfo
 }
 
 type ReadCloseSeeker interface {
@@ -62,7 +62,7 @@ type MetadataRepoReader interface {
 }
 
 type Extractor interface {
-	Extract(ctx context.Context, logctx log.Interface, files []*FileInfo) <-chan Photo
+	Extract(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []*FileInfo) <-chan Photo
 }
 
 type Item interface {

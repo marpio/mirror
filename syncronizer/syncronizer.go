@@ -1,14 +1,13 @@
 package syncronizer
 
 import (
-	"bytes"
 	"context"
-	"io"
 	"sync"
 	"time"
 
 	"github.com/apex/log"
 	"github.com/marpio/mirror/domain"
+	"github.com/marpio/mirror/localstorage"
 )
 
 type Service struct {
@@ -52,36 +51,57 @@ func New(remotestorage domain.Storage,
 	}
 	return s
 }
-
-func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath string) {
-	isNewfilterFn := func(fi *domain.FileInfo) bool {
-		exists, err := s.metadataStore.Exists(fi.ID())
-		if err != nil {
-			return false
+func (s *Service) bla(ctx context.Context, logctx log.Interface, pathsGroupedByDir map[string][]*domain.FileInfo) <-chan []*domain.FileInfo {
+	fileInfoStream := make(chan []*domain.FileInfo)
+	go func() {
+		defer close(fileInfoStream)
+		for _, dirFiles := range pathsGroupedByDir {
+			dirFileInfoStream := make([]*domain.FileInfo, len(dirFiles), len(dirFiles))
+			var wg sync.WaitGroup
+			wg.Add(len(dirFiles))
+			for i, f := range dirFiles {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					go func(i int, fi *domain.FileInfo) {
+						defer wg.Done()
+						logctx.Infof("checking file: %s", fi.FilePath)
+						exists, _ := s.metadataStore.Exists(fi.ID())
+						if !exists {
+							dirFileInfoStream[i] = fi
+						} else {
+							dirFileInfoStream[i] = nil
+						}
+					}(i, f)
+				}
+			}
+			wg.Wait()
+			newFiles := make([]*domain.FileInfo, 0)
+			for _, elem := range dirFileInfoStream {
+				if elem != nil {
+					newFiles = append(newFiles, elem)
+				}
+			}
+			fileInfoStream <- newFiles
 		}
-		return !exists
-	}
-
-	newFiles, oldFiles := s.localstrg.SearchFiles(rootPath, isNewfilterFn, ".jpg", ".jpeg", ".nef")
-	logctx.Infof("%d element(s) to sync.", len(newFiles))
-	photosStream := s.metadataextr.Extract(ctx, logctx, newFiles)
+	}()
+	return fileInfoStream
+}
+func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath string) {
+	logctx.Info("starting")
+	files := s.localstrg.SearchFiles(rootPath, ".jpg", ".jpeg", ".nef")
+	logctx.Infof("found %v files", len(files))
+	pathsGroupedByDir := localstorage.GroupByDir(files)
+	logctx.Infof("found %v files", len(files))
+	newFilesByDirStream := s.bla(ctx, logctx, pathsGroupedByDir)
+	photosStream := s.metadataextr.Extract(ctx, logctx, newFilesByDirStream)
 	syncedPhotosStream := s.syncWithRemoteStorage(ctx, logctx, photosStream)
 	s.saveToDb(ctx, syncedPhotosStream)
 	allFiles := make(map[string]struct{})
-	for _, fi := range newFiles {
+	for _, fi := range files {
 		if _, ok := allFiles[fi.ID()]; !ok {
 			allFiles[fi.ID()] = struct{}{}
-		}
-	}
-	for _, fi := range oldFiles {
-		if _, ok := allFiles[fi.ID()]; !ok {
-			allFiles[fi.ID()] = struct{}{}
-		}
-	}
-	for _, f := range s.metadataStore.GetAll() {
-		if _, ok := allFiles[f.ID()]; !ok {
-			s.metadataStore.Delete(f.ID())
-			s.remotestrg.Delete(ctx, f.ID())
 		}
 	}
 }
@@ -146,38 +166,38 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 
 func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img domain.Photo) error {
 	logctx.Info("uploading photo.")
-	f, err := img.NewJpgReader()
-	if err != nil {
-		logctx.WithError(err)
-		return err
-	}
-	defer f.Close()
-
-	w := s.remotestrg.NewWriter(ctx, img.ID())
-	_, err = io.Copy(w, f)
-	if err != nil {
-		logctx.WithError(err)
-		return err
-	}
-	if err := w.Close(); err != nil {
-		logctx.WithError(err)
-		return err
-	}
-	logctx.Info("photo upload complete.")
+	//f, err := img.NewJpgReader()
+	//if err != nil {
+	//	logctx.WithError(err)
+	//	return err
+	//}
+	//defer f.Close()
+	//
+	//w := s.remotestrg.NewWriter(ctx, img.ID())
+	//_, err = io.Copy(w, f)
+	//if err != nil {
+	//	logctx.WithError(err)
+	//	return err
+	//}
+	//if err := w.Close(); err != nil {
+	//	logctx.WithError(err)
+	//	return err
+	//}
+	//logctx.Info("photo upload complete.")
 	return nil
 }
 
 func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img domain.Photo) {
-	logctx.Info("uploading thumb.")
-	w := s.remotestrg.NewWriter(ctx, img.ThumbID())
-	_, err := io.Copy(w, bytes.NewReader(img.Thumbnail()))
-	if err != nil {
-		logctx.WithError(err)
-		return
-	}
-	if err := w.Close(); err != nil {
-		logctx.WithError(err)
-		return
-	}
-	logctx.Info("thumb upload complete.")
+	//logctx.Info("uploading thumb.")
+	//w := s.remotestrg.NewWriter(ctx, img.ThumbID())
+	//_, err := io.Copy(w, bytes.NewReader(img.Thumbnail()))
+	//if err != nil {
+	//	logctx.WithError(err)
+	//	return
+	//}
+	//if err := w.Close(); err != nil {
+	//	logctx.WithError(err)
+	//	return
+	//}
+	//logctx.Info("thumb upload complete.")
 }

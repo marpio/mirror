@@ -15,7 +15,6 @@ import (
 
 	"github.com/apex/log"
 	"github.com/marpio/mirror/domain"
-	"github.com/marpio/mirror/localstorage"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
 )
@@ -28,29 +27,23 @@ func NewExtractor(rd domain.StorageReadSeeker) domain.Extractor {
 	return &extractor{rd: rd}
 }
 
-func (s extractor) Extract(ctx context.Context, logctx log.Interface, files []*domain.FileInfo) <-chan domain.Photo {
-	pathsGroupedByDir := localstorage.GroupByDir(files)
+func (s extractor) Extract(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []*domain.FileInfo) <-chan domain.Photo {
 	metadataStream := make(chan domain.Photo, 100)
 
 	go func() {
 		defer close(metadataStream)
 		var wg sync.WaitGroup
-		wg.Add(len(pathsGroupedByDir))
-		for dir, paths := range pathsGroupedByDir {
+		for paths := range filesByDirStream {
 			select {
 			case <-ctx.Done():
 				return
 			default:
-				go func(dir string, ps []*domain.FileInfo) {
-					loger := logctx.WithFields(log.Fields{
-						"extracting_metadata_dir": dir,
-					})
-					loger.Info("starting to extract metadata.")
-
+				wg.Add(1)
+				go func(filesByDir []*domain.FileInfo) {
+					logctx.Infof("%v", filesByDir)
 					defer wg.Done()
-					s.extractMetadataDir(ctx, loger, metadataStream, ps)
-					loger.Info("done extracting metadata.")
-				}(dir, paths)
+					s.extractMetadataDir(ctx, logctx, metadataStream, filesByDir)
+				}(paths)
 			}
 		}
 		wg.Wait()
@@ -73,14 +66,15 @@ loop:
 			p, err = extractMetadataNEF(ctx, ph, s.rd)
 		case ".jpg":
 		case ".jpeg":
-			p, err = extractMetadataJpg(ctx, ph, s.rd)
+			p, err = extractMetadataJpg(ctx, logctx, ph, s.rd)
 		default:
 			err = fmt.Errorf("not supported format %s", ext)
 		}
 		if err != nil {
-			logctx.WithError(err)
+			logctx.Errorf("woow %v", err)
 			continue loop
 		}
+
 		dirCreatedAt = p.CreatedAt()
 		md = append(md, p)
 	}
@@ -112,25 +106,31 @@ func extractMetadataNEF(ctx context.Context, fi *domain.FileInfo, rs domain.Stor
 	return p, nil
 }
 
-func extractMetadataJpg(ctx context.Context, fi *domain.FileInfo, rs domain.StorageReadSeeker) (domain.Photo, error) {
+func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi *domain.FileInfo, rs domain.StorageReadSeeker) (domain.Photo, error) {
 	f, err := rs.NewReadSeeker(ctx, fi.FilePath)
 	if err != nil {
+		logctx.Infof("error %v", fi.FilePath)
 		return nil, err
 	}
 	defer f.Close()
 
 	createdAt, err := extractCreatedAt(f)
 	if err != nil {
+		logctx.Infof("error %v", fi.FilePath)
 		return nil, err
 	}
 
 	f.Seek(0, 0)
 	thumb, err := extractThumb(f)
 	if err != nil {
+		logctx.Infof("error %v", fi.FilePath)
 		return nil, err
 	}
 	readerFn := func() (io.ReadCloser, error) { return rs.NewReadSeeker(ctx, fi.FilePath) }
 	p := domain.NewPhoto(fi, &domain.Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
+	if p == nil {
+		logctx.Infof("nil pointer %v", fi.FilePath)
+	}
 	return p, nil
 }
 
