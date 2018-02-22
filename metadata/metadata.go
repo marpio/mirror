@@ -40,7 +40,6 @@ func (s extractor) Extract(ctx context.Context, logctx log.Interface, filesByDir
 			default:
 				wg.Add(1)
 				go func(filesByDir []*domain.FileInfo) {
-					logctx.Infof("%v", filesByDir)
 					defer wg.Done()
 					s.extractMetadataDir(ctx, logctx, metadataStream, filesByDir)
 				}(paths)
@@ -61,20 +60,19 @@ loop:
 		})
 		var p domain.Photo
 		var err error
-		switch ext := strings.ToLower(ph.FileExt); ext {
+		ext := strings.ToLower(ph.FileExt)
+		switch ext {
 		case ".nef":
 			p, err = extractMetadataNEF(ctx, ph, s.rd)
-		case ".jpg":
-		case ".jpeg":
+		case ".jpg", ".jpeg":
 			p, err = extractMetadataJpg(ctx, logctx, ph, s.rd)
 		default:
 			err = fmt.Errorf("not supported format %s", ext)
 		}
 		if err != nil {
-			logctx.Errorf("woow %v", err)
+			logctx.Errorf("error extracting metadata %v", err)
 			continue loop
 		}
-
 		dirCreatedAt = p.CreatedAt()
 		md = append(md, p)
 	}
@@ -128,9 +126,7 @@ func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi *domain.Fi
 	}
 	readerFn := func() (io.ReadCloser, error) { return rs.NewReadSeeker(ctx, fi.FilePath) }
 	p := domain.NewPhoto(fi, &domain.Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
-	if p == nil {
-		logctx.Infof("nil pointer %v", fi.FilePath)
-	}
+
 	return p, nil
 }
 
