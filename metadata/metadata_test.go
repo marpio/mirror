@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/apex/log"
+	"github.com/marpio/mirror"
 
 	"github.com/spf13/afero"
 )
@@ -97,9 +97,9 @@ func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	afs := afero.NewOsFs()
 	rs := NewStorageReadSeeker(afs)
 	ex := NewExtractor(rs)
-	files := []*mirror.FileInfo{&mirror.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample2.jpg"}, &mirror.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample.jpg"}}
+	files := []*mirror.FileInfo{&mirror.FileInfo{FilePath: "../test/sample2.jpg"}, &mirror.FileInfo{FilePath: "../test/sample.jpg"}}
 	ch := ex.Extract(context.Background(), log.Log, files)
-	for p := range ch {
+	for _, p := range ch {
 		c := p.CreatedAt()
 		if !(c.Year() == 2017 && c.Month() == 8 && c.Day() == 25 && c.Hour() == 17 && c.Minute() == 3 && c.Second() == 30) {
 			t.Error("Extracting CreatedAt failed.")

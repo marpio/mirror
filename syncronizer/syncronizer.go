@@ -62,7 +62,7 @@ func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath st
 	logctx.Infof("no. of files: %d", len(files))
 	pathsGroupedByDir := storage.GroupByDir(files)
 	unsyncedFilesByDir := s.getUnsyncedFiles(ctx, logctx, pathsGroupedByDir)
-	photosStream := s.metadataextr.Extract(ctx, logctx, unsyncedFilesByDir)
+	photosStream := s.ExtractMetadata(ctx, logctx, unsyncedFilesByDir)
 	syncedPhotosStream := s.syncWithRemoteStorage(ctx, logctx, photosStream)
 	s.saveToDb(ctx, syncedPhotosStream)
 	allFiles := make(map[string]struct{})
@@ -73,12 +73,12 @@ func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath st
 	}
 }
 
-func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pathsGroupedByDir map[string][]*mirror.FileInfo) <-chan []*mirror.FileInfo {
-	fileInfoStream := make(chan []*mirror.FileInfo)
+func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pathsGroupedByDir map[string][]mirror.FileInfo) <-chan []mirror.FileInfo {
+	fileInfoStream := make(chan []mirror.FileInfo)
 	go func() {
 		defer close(fileInfoStream)
 		for _, dirFiles := range pathsGroupedByDir {
-			dirFileInfoStream := make([]*mirror.FileInfo, len(dirFiles), len(dirFiles))
+			dirFileInfoStream := make([]mirror.FileInfo, len(dirFiles), len(dirFiles))
 			var wg sync.WaitGroup
 			wg.Add(len(dirFiles))
 			for i, fi := range dirFiles {
@@ -86,7 +86,7 @@ func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pa
 				case <-ctx.Done():
 					return
 				default:
-					go func(i int, fi *mirror.FileInfo) {
+					go func(i int, fi mirror.FileInfo) {
 						defer wg.Done()
 						exists, _ := s.metadataStore.Exists(fi.ID())
 						if !exists {
@@ -96,7 +96,7 @@ func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pa
 				}
 			}
 			wg.Wait()
-			newFiles := make([]*mirror.FileInfo, 0)
+			newFiles := make([]mirror.FileInfo, 0)
 			send := false
 			for _, elem := range dirFileInfoStream {
 				if elem != nil {
@@ -110,6 +110,28 @@ func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pa
 		}
 	}()
 	return fileInfoStream
+}
+
+func (s *Service) ExtractMetadata(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []mirror.FileInfo) <-chan mirror.Photo {
+	metadataStream := make(chan mirror.Photo, 20)
+
+	go func() {
+		defer close(metadataStream)
+		var wg sync.WaitGroup
+		for paths := range filesByDirStream {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				md := s.metadataextr.Extract(ctx, logctx, paths)
+				for _, p := range md {
+					metadataStream <- p
+				}
+			}
+		}
+		wg.Wait()
+	}()
+	return metadataStream
 }
 
 func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan mirror.Photo) {

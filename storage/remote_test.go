@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/marpio/mirror/crypto"
-	"github.com/marpio/mirror/remotestorage/filesystem"
+	"github.com/marpio/mirror/storage/filesystem"
 	"github.com/spf13/afero"
 )
 
@@ -34,7 +34,7 @@ func TestWriteRead(t *testing.T) {
 	afs := afero.NewMemMapFs()
 	b := filesystem.New(afs)
 	c := crypto.NewService(encKey)
-	rs := New(b, c)
+	rs := NewRemote(b, c)
 
 	path1 := "path1"
 	sizes := []int{10, 1000, 65536, 80000, 131072, 328000, 1234567}

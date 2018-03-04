@@ -99,7 +99,7 @@ func runSync(dir string) {
 		}
 	}()
 	appFs := afero.NewOsFs()
-	localFilesRepo := storage.NewLocal(appFs)
+	localFilesRepo := storage.NewLocal(appFs, crypto.GenerateFileSha256)
 	syncronizer := syncronizer.New(rs,
 		repo,
 		localFilesRepo,

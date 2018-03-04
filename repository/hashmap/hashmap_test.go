@@ -9,6 +9,7 @@ import (
 
 	"github.com/marpio/mirror"
 	"github.com/marpio/mirror/crypto"
+	"github.com/marpio/mirror/storage"
 	"github.com/marpio/mirror/storage/filesystem"
 
 	"github.com/spf13/afero"
@@ -32,7 +33,7 @@ func setup() (mirror.MetadataRepo, afero.Fs) {
 }
 
 func initRepo(afs afero.Fs) (mirror.MetadataRepo, afero.Fs) {
-	b := remotestorage.New(filesystem.New(afs), crypto.NewService(key))
+	b := storage.NewRemote(filesystem.New(afs), crypto.NewService(key))
 	s, _ := New(ctx, b, dbPath)
 	return s, afs
 }

@@ -10,25 +10,25 @@ import (
 	"github.com/marpio/mirror"
 )
 
-type item struct {
+type entry struct {
 	FileID      string `json:"id"`
 	FileModTime string `json:"modTime"`
 	Directory   string `json:"directory"`
 }
 
-func (it item) ID() string {
+func (it entry) ID() string {
 	return it.FileID
 }
 
-func (it item) ThumbID() string {
+func (it entry) ThumbID() string {
 	return "thumb_" + it.ID()
 }
 
-func (it item) Dir() string {
+func (it entry) Dir() string {
 	return it.Directory
 }
 
-type m map[string]map[string]*item
+type m map[string]map[string]*entry
 
 type hashmapStore struct {
 	rs       mirror.Storage
@@ -72,8 +72,8 @@ func (s *hashmapStore) Reload(ctx context.Context) error {
 	return nil
 }
 
-func (s *hashmapStore) GetByDir(dir string) ([]mirror.Item, error) {
-	var res = make([]mirror.Item, 0)
+func (s *hashmapStore) GetByDir(dir string) ([]mirror.RepoEntry, error) {
+	var res = make([]mirror.RepoEntry, 0)
 	if p, ok := s.data[dir]; ok {
 		for _, x := range p {
 			res = append(res, x)
@@ -82,7 +82,7 @@ func (s *hashmapStore) GetByDir(dir string) ([]mirror.Item, error) {
 	return res, nil
 }
 
-func (s *hashmapStore) GetByDirAndId(dir, id string) (mirror.Item, error) {
+func (s *hashmapStore) GetByDirAndId(dir, id string) (mirror.RepoEntry, error) {
 	if p, ok := s.data[dir]; ok {
 		if f, ok := p[id]; ok {
 			return f, nil
@@ -102,7 +102,7 @@ func (s *hashmapStore) Exists(id string) (bool, error) {
 	return false, nil
 }
 
-func (s *hashmapStore) getByID(id string) *item {
+func (s *hashmapStore) getByID(id string) *entry {
 	for _, d := range s.data {
 		if p, ok := d[id]; ok {
 			return p
@@ -111,12 +111,12 @@ func (s *hashmapStore) getByID(id string) *item {
 	return nil
 }
 
-func (s *hashmapStore) Add(it mirror.Item) error {
+func (s *hashmapStore) Add(it mirror.RepoEntry) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	x := &item{FileID: it.ID(), Directory: it.Dir()}
+	x := &entry{FileID: it.ID(), Directory: it.Dir()}
 	if _, ok := s.data[x.Directory]; !ok {
-		s.data[x.Directory] = make(map[string]*item)
+		s.data[x.Directory] = make(map[string]*entry)
 	}
 	if _, ok := s.data[x.Directory][x.FileID]; !ok {
 		s.data[x.Directory][x.FileID] = x
@@ -133,8 +133,8 @@ func (s *hashmapStore) Persist(ctx context.Context) error {
 	return nil
 }
 
-func (s *hashmapStore) GetAll() []mirror.Item {
-	var res = make([]mirror.Item, 0)
+func (s *hashmapStore) GetAll() []mirror.RepoEntry {
+	var res = make([]mirror.RepoEntry, 0)
 	for _, d := range s.data {
 		for _, p := range d {
 			res = append(res, p)

@@ -12,11 +12,12 @@ import (
 	"github.com/aymerick/raymond"
 	"github.com/goji/httpauth"
 	"github.com/gorilla/mux"
+	"github.com/marpio/mirror"
 	"github.com/marpio/mirror/crypto"
+	"github.com/marpio/mirror/storage"
 
-	"github.com/marpio/mirror/remotestorage"
-	"github.com/marpio/mirror/remotestorage/b2"
 	"github.com/marpio/mirror/repository/hashmap"
+	"github.com/marpio/mirror/storage/b2"
 	"github.com/spf13/afero"
 )
 
@@ -38,7 +39,7 @@ func main() {
 	password := getenv("MIRROR_PASSWORD")
 	ctx := context.Background()
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
-	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
+	rs := storage.NewRemote(rsBackend, crypto.NewService(encryptionKey))
 	appFs := afero.NewOsFs()
 	metadataStore := createMetadataStore(ctx, appFs, repoFileName, rs)
 

@@ -2,6 +2,7 @@ package crypto
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
@@ -9,6 +10,11 @@ import (
 
 	"golang.org/x/crypto/nacl/secretbox"
 )
+
+func GenerateFileSha256(data []byte) string {
+	h := sha256.Sum256(data)
+	return fmt.Sprintf("%x", h)
+}
 
 const keyLen = 32
 const nonceLen = 24
