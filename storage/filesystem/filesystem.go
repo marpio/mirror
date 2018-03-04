@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/marpio/mirror/domain"
+	"github.com/marpio/mirror"
 	"github.com/spf13/afero"
 )
 
@@ -12,7 +12,7 @@ type fsBackend struct {
 	fs afero.Fs
 }
 
-func New(fs afero.Fs) domain.Storage {
+func New(fs afero.Fs) mirror.Storage {
 	return &fsBackend{fs: fs}
 }
 

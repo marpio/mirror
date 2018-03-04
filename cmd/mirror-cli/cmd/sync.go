@@ -25,11 +25,10 @@ import (
 	"github.com/apex/log/handlers/multi"
 	"github.com/apex/log/handlers/text"
 	"github.com/marpio/mirror/crypto"
-	"github.com/marpio/mirror/localstorage"
 	"github.com/marpio/mirror/metadata"
-	"github.com/marpio/mirror/remotestorage"
-	"github.com/marpio/mirror/remotestorage/b2"
 	"github.com/marpio/mirror/repository/hashmap"
+	"github.com/marpio/mirror/storage"
+	"github.com/marpio/mirror/storage/b2"
 	"github.com/marpio/mirror/syncronizer"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
@@ -82,7 +81,7 @@ func runSync(dir string) {
 	})
 
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
-	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
+	rs := storage.NewRemote(rsBackend, crypto.NewService(encryptionKey))
 
 	repo, err := hashmap.New(ctx, rs, dbPath)
 	if err != nil {
@@ -100,7 +99,7 @@ func runSync(dir string) {
 		}
 	}()
 	appFs := afero.NewOsFs()
-	localFilesRepo := localstorage.NewService(appFs)
+	localFilesRepo := storage.NewLocal(appFs)
 	syncronizer := syncronizer.New(rs,
 		repo,
 		localFilesRepo,

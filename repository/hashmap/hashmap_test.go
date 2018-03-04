@@ -7,11 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/marpio/mirror"
 	"github.com/marpio/mirror/crypto"
-	"github.com/marpio/mirror/remotestorage"
-	"github.com/marpio/mirror/remotestorage/filesystem"
+	"github.com/marpio/mirror/storage/filesystem"
 
-	"github.com/marpio/mirror/domain"
 	"github.com/spf13/afero"
 )
 
@@ -23,16 +22,16 @@ func (nopCloser) Close() error { return nil }
 
 var ctx context.Context = context.Background()
 
-const dbPath string = "domain.db"
+const dbPath string = "mirror.db"
 const key string = "b567ef1d391e8a10d94100faa34b7d28fdab13e3f51f94b8"
 
-func setup() (domain.MetadataRepo, afero.Fs) {
+func setup() (mirror.MetadataRepo, afero.Fs) {
 	afs := afero.NewMemMapFs()
 	s, afs := initRepo(afs)
 	return s, afs
 }
 
-func initRepo(afs afero.Fs) (domain.MetadataRepo, afero.Fs) {
+func initRepo(afs afero.Fs) (mirror.MetadataRepo, afero.Fs) {
 	b := remotestorage.New(filesystem.New(afs), crypto.NewService(key))
 	s, _ := New(ctx, b, dbPath)
 	return s, afs
@@ -41,13 +40,13 @@ func TestExists(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	p2 := "/path/to/file2"
-	ph1 := domain.NewPhoto(
-		&domain.FileInfo{FilePath: p},
-		&domain.Metadata{CreatedAt: time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)},
+	ph1 := mirror.NewPhoto(
+		&mirror.FileInfo{FilePath: p},
+		&mirror.Metadata{CreatedAt: time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)},
 		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
-	ph2 := domain.NewPhoto(
-		&domain.FileInfo{FilePath: p2},
-		&domain.Metadata{CreatedAt: time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)},
+	ph2 := mirror.NewPhoto(
+		&mirror.FileInfo{FilePath: p2},
+		&mirror.Metadata{CreatedAt: time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)},
 		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(ph1)
 	s.Add(ph2)
@@ -61,9 +60,9 @@ func TestGetByDir(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	ph := domain.NewPhoto(
-		&domain.FileInfo{FilePath: p},
-		&domain.Metadata{CreatedAt: m},
+	ph := mirror.NewPhoto(
+		&mirror.FileInfo{FilePath: p},
+		&mirror.Metadata{CreatedAt: m},
 		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(ph)
 	r, _ := s.GetByDir("2017-05")
@@ -78,13 +77,13 @@ func TestGetDirs(t *testing.T) {
 	p2 := "/path/to/file2"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 	m2 := time.Date(2017, 6, 1, 0, 0, 0, 0, time.UTC)
-	ph1 := domain.NewPhoto(
-		&domain.FileInfo{FilePath: p},
-		&domain.Metadata{CreatedAt: m},
+	ph1 := mirror.NewPhoto(
+		&mirror.FileInfo{FilePath: p},
+		&mirror.Metadata{CreatedAt: m},
 		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
-	ph2 := domain.NewPhoto(
-		&domain.FileInfo{FilePath: p2},
-		&domain.Metadata{CreatedAt: m2},
+	ph2 := mirror.NewPhoto(
+		&mirror.FileInfo{FilePath: p2},
+		&mirror.Metadata{CreatedAt: m2},
 		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(ph1)
 	s.Add(ph2)
@@ -101,9 +100,9 @@ func TestDelete(t *testing.T) {
 	s, _ := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	p1 := domain.NewPhoto(
-		&domain.FileInfo{FilePath: p},
-		&domain.Metadata{CreatedAt: m},
+	p1 := mirror.NewPhoto(
+		&mirror.FileInfo{FilePath: p},
+		&mirror.Metadata{CreatedAt: m},
 		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(p1)
 	s.Delete(p1.ID())
@@ -117,9 +116,9 @@ func TestPersist(t *testing.T) {
 	s, afs := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	p1 := domain.NewPhoto(
-		&domain.FileInfo{FilePath: p},
-		&domain.Metadata{CreatedAt: m},
+	p1 := mirror.NewPhoto(
+		&mirror.FileInfo{FilePath: p},
+		&mirror.Metadata{CreatedAt: m},
 		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(p1)
 
@@ -132,13 +131,13 @@ func TestPersist(t *testing.T) {
 }
 
 func TestReload(t *testing.T) {
-	dbPath := "domain.db"
+	dbPath := "mirror.db"
 	s, afs := setup()
 	p := "/path/to/file"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	p1 := domain.NewPhoto(
-		&domain.FileInfo{FilePath: p},
-		&domain.Metadata{CreatedAt: m},
+	p1 := mirror.NewPhoto(
+		&mirror.FileInfo{FilePath: p},
+		&mirror.Metadata{CreatedAt: m},
 		func() (io.ReadCloser, error) { return nopCloser{bytes.NewReader(make([]byte, 0))}, nil })
 	s.Add(p1)
 	s.Persist(ctx)

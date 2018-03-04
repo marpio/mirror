@@ -7,8 +7,9 @@ services:
       - B2_ACCOUNT_KEY
       - ENCR_KEY
       - IMG_DB
-      - PICS_USERNAME
-      - PICS_PASSWORD
+      - MIRROR_USERNAME
+      - MIRROR_PASSWORD
+      - REPO
     build: .
     expose:
       - "5000"

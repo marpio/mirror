@@ -1,19 +1,19 @@
-package remotestorage
+package storage
 
 import (
 	"context"
 	"io"
 
+	"github.com/marpio/mirror"
 	"github.com/marpio/mirror/crypto"
-	"github.com/marpio/mirror/domain"
 )
 
-func New(b domain.Storage, c crypto.Service) domain.Storage {
+func NewRemote(b mirror.Storage, c crypto.Service) mirror.Storage {
 	return &rs{backend: b, crpt: c}
 }
 
 type rs struct {
-	backend domain.Storage
+	backend mirror.Storage
 	crpt    crypto.Service
 }
 
@@ -87,72 +87,56 @@ func (b *reader) Close() error {
 type writer struct {
 	err  error
 	buf  []byte
-	n    int
 	wr   io.WriteCloser
 	crpt crypto.Service
 }
 
 func (b *rs) NewWriter(ctx context.Context, path string) io.WriteCloser {
-	return &writer{wr: b.backend.NewWriter(ctx, path), buf: make([]byte, b.crpt.BlockSize()), crpt: b.crpt}
+	return &writer{wr: b.backend.NewWriter(ctx, path), buf: make([]byte, 0), crpt: b.crpt}
 }
 
-// Available returns how many bytes are unused in the buffer.
-func (b *writer) available() int { return len(b.buf) - b.n }
-
-func (b *writer) Write(p []byte) (nn int, err error) {
-	for len(p) > b.available() && b.err == nil {
-		var n int
-		n = copy(b.buf[b.n:], p)
-		b.n += n
-		if err := b.flush(); err != nil {
-			return nn, err
-		}
-		nn += n
-		p = p[n:]
+func (b *writer) Write(p []byte) (int, error) {
+	l := len(b.buf) + len(p)
+	d := make([]byte, l, l)
+	copy(d[:len(b.buf)], b.buf[:])
+	copy(d[len(b.buf):], p[:])
+	end := (len(d) / b.crpt.BlockSize()) * b.crpt.BlockSize()
+	encrypted, err := b.crpt.Seal(d[:end])
+	if err != nil {
+		return 0, err
 	}
-	if b.err != nil {
-		return nn, b.err
+	_, err = b.wr.Write(encrypted)
+	if err != nil {
+		return 0, err
 	}
-	n := copy(b.buf[b.n:], p)
-	b.n += n
-	nn += n
-
-	return nn, nil
+	b.buf = d[end:]
+	return len(p), nil
 }
 
 // Flush writes any buffered data to the underlying io.Writer.
 func (b *writer) flush() error {
-	if b.err != nil {
-		return b.err
-	}
-	if b.n == 0 {
-		return nil
-	}
-
-	encrypted, err := b.crpt.Seal(b.buf[0:b.n])
+	encrypted, err := b.crpt.Seal(b.buf)
 	if err != nil {
 		return err
 	}
-	n, err := b.wr.Write(encrypted)
-	n = n - b.crpt.NonceSize() - b.crpt.Overhead()
-	if n < b.n && err == nil {
-		err = io.ErrShortWrite
-	}
+	_, err = b.wr.Write(encrypted)
 	if err != nil {
-		if n > 0 && n < b.n {
-			copy(b.buf[0:b.n-n], b.buf[n:b.n])
-		}
-		b.n -= n
-		b.err = err
 		return err
 	}
-	b.n = 0
+	// TODO: handle the case when less then len(encrypted) has been written
 	return nil
 }
 
 func (b *writer) Close() error {
-	defer b.wr.Close()
-	return b.flush()
+	err := b.flush()
+	if err != nil {
+		return err
+	}
+	err = b.wr.Close()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func (b *rs) Exists(ctx context.Context, fileName string) bool {
@@ -160,8 +144,5 @@ func (b *rs) Exists(ctx context.Context, fileName string) bool {
 }
 
 func (b *rs) Delete(ctx context.Context, fileName string) error {
-	if err := b.backend.Delete(ctx, fileName); err != nil {
-		return err
-	}
-	return nil
+	return b.backend.Delete(ctx, fileName)
 }

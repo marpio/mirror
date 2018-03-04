@@ -13,7 +13,7 @@ import (
 	"github.com/goji/httpauth"
 	"github.com/gorilla/mux"
 	"github.com/marpio/mirror/crypto"
-	"github.com/marpio/mirror/domain"
+
 	"github.com/marpio/mirror/remotestorage"
 	"github.com/marpio/mirror/remotestorage/b2"
 	"github.com/marpio/mirror/repository/hashmap"
@@ -48,7 +48,7 @@ func main() {
 	http.ListenAndServe(":5000", nil)
 }
 
-func configureRouter(ctx context.Context, metadataStore domain.MetadataRepoReader, remotestorage domain.StorageReader, imgDBPath string) *mux.Router {
+func configureRouter(ctx context.Context, metadataStore mirror.MetadataRepoReader, remotestorage mirror.StorageReader, imgDBPath string) *mux.Router {
 	r := mux.NewRouter()
 	r.HandleFunc("/", mainPageHandler(metadataStore))
 	r.HandleFunc("/dirs/{dir}", dirHandler(metadataStore))
@@ -65,7 +65,7 @@ func configureRouter(ctx context.Context, metadataStore domain.MetadataRepoReade
 	return r
 }
 
-func createMetadataStore(ctx context.Context, fs afero.Fs, imgDBPath string, remotestorage domain.Storage) domain.MetadataRepoReader {
+func createMetadataStore(ctx context.Context, fs afero.Fs, imgDBPath string, remotestorage mirror.Storage) mirror.MetadataRepoReader {
 	repo, err := hashmap.New(ctx, remotestorage, imgDBPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error creating metadata repository: %v", err)
@@ -74,7 +74,7 @@ func createMetadataStore(ctx context.Context, fs afero.Fs, imgDBPath string, rem
 	return repo
 }
 
-func mainPageHandler(metadataStore domain.MetadataRepoReader) func(w http.ResponseWriter, r *http.Request) {
+func mainPageHandler(metadataStore mirror.MetadataRepoReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		dirs, err := metadataStore.GetDirs()
 		if err != nil {
@@ -99,7 +99,7 @@ func mainPageHandler(metadataStore domain.MetadataRepoReader) func(w http.Respon
 	}
 }
 
-func dirHandler(metadataStore domain.MetadataRepoReader) func(w http.ResponseWriter, r *http.Request) {
+func dirHandler(metadataStore mirror.MetadataRepoReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		dir := vars["dir"]
@@ -134,12 +134,10 @@ func dirHandler(metadataStore domain.MetadataRepoReader) func(w http.ResponseWri
 	}
 }
 
-func fileHandler(ctx context.Context, remotestorage domain.StorageReader) func(w http.ResponseWriter, r *http.Request) {
+func fileHandler(ctx context.Context, remotestorage mirror.StorageReader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		vars := mux.Vars(r)
 		id := vars["id"]
-		ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
 		rd, err := remotestorage.NewReader(ctx, id)
 		if err != nil {
 			http.Error(w, err.Error(), 500)

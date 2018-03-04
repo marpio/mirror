@@ -1,20 +1,24 @@
 package syncronizer
 
 import (
+	"bytes"
 	"context"
+	"fmt"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/apex/log"
-	"github.com/marpio/mirror/domain"
-	"github.com/marpio/mirror/localstorage"
+
+	"github.com/marpio/mirror"
+	"github.com/marpio/mirror/storage"
 )
 
 type Service struct {
-	remotestrg           domain.Storage
-	metadataStore        domain.MetadataRepo
-	localstrg            domain.LocalStorage
-	metadataextr         domain.Extractor
+	remotestrg           mirror.Storage
+	metadataStore        mirror.MetadataRepo
+	localstrg            mirror.ReadOnlyStorage
+	metadataextr         mirror.Extractor
 	maxConcurrentUploads int
 	timeout              time.Duration
 }
@@ -32,10 +36,10 @@ func WithTimeout(t time.Duration) option {
 	}
 }
 
-func New(remotestorage domain.Storage,
-	metadataStore domain.MetadataRepo,
-	localFilesRepo domain.LocalStorage,
-	metadataextr domain.Extractor,
+func New(remotestorage mirror.Storage,
+	metadataStore mirror.MetadataRepo,
+	localFilesRepo mirror.ReadOnlyStorage,
+	metadataextr mirror.Extractor,
 	options ...option) *Service {
 
 	s := &Service{
@@ -51,51 +55,14 @@ func New(remotestorage domain.Storage,
 	}
 	return s
 }
-func (s *Service) bla(ctx context.Context, logctx log.Interface, pathsGroupedByDir map[string][]*domain.FileInfo) <-chan []*domain.FileInfo {
-	fileInfoStream := make(chan []*domain.FileInfo)
-	go func() {
-		defer close(fileInfoStream)
-		for _, dirFiles := range pathsGroupedByDir {
-			dirFileInfoStream := make([]*domain.FileInfo, len(dirFiles), len(dirFiles))
-			var wg sync.WaitGroup
-			wg.Add(len(dirFiles))
-			for i, f := range dirFiles {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					go func(i int, fi *domain.FileInfo) {
-						defer wg.Done()
-						logctx.Infof("checking file: %s", fi.FilePath)
-						exists, _ := s.metadataStore.Exists(fi.ID())
-						if !exists {
-							dirFileInfoStream[i] = fi
-						} else {
-							dirFileInfoStream[i] = nil
-						}
-					}(i, f)
-				}
-			}
-			wg.Wait()
-			newFiles := make([]*domain.FileInfo, 0)
-			for _, elem := range dirFileInfoStream {
-				if elem != nil {
-					newFiles = append(newFiles, elem)
-				}
-			}
-			fileInfoStream <- newFiles
-		}
-	}()
-	return fileInfoStream
-}
+
 func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath string) {
 	logctx.Info("starting")
 	files := s.localstrg.SearchFiles(rootPath, ".jpg", ".jpeg", ".nef")
-	logctx.Infof("found %v files", len(files))
-	pathsGroupedByDir := localstorage.GroupByDir(files)
-	logctx.Infof("found %v files", len(files))
-	newFilesByDirStream := s.bla(ctx, logctx, pathsGroupedByDir)
-	photosStream := s.metadataextr.Extract(ctx, logctx, newFilesByDirStream)
+	logctx.Infof("no. of files: %d", len(files))
+	pathsGroupedByDir := storage.GroupByDir(files)
+	unsyncedFilesByDir := s.getUnsyncedFiles(ctx, logctx, pathsGroupedByDir)
+	photosStream := s.metadataextr.Extract(ctx, logctx, unsyncedFilesByDir)
 	syncedPhotosStream := s.syncWithRemoteStorage(ctx, logctx, photosStream)
 	s.saveToDb(ctx, syncedPhotosStream)
 	allFiles := make(map[string]struct{})
@@ -106,9 +73,50 @@ func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath st
 	}
 }
 
-func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan domain.Photo) {
+func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pathsGroupedByDir map[string][]*mirror.FileInfo) <-chan []*mirror.FileInfo {
+	fileInfoStream := make(chan []*mirror.FileInfo)
+	go func() {
+		defer close(fileInfoStream)
+		for _, dirFiles := range pathsGroupedByDir {
+			dirFileInfoStream := make([]*mirror.FileInfo, len(dirFiles), len(dirFiles))
+			var wg sync.WaitGroup
+			wg.Add(len(dirFiles))
+			for i, fi := range dirFiles {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					go func(i int, fi *mirror.FileInfo) {
+						defer wg.Done()
+						exists, _ := s.metadataStore.Exists(fi.ID())
+						if !exists {
+							dirFileInfoStream[i] = fi
+						}
+					}(i, fi)
+				}
+			}
+			wg.Wait()
+			newFiles := make([]*mirror.FileInfo, 0)
+			send := false
+			for _, elem := range dirFileInfoStream {
+				if elem != nil {
+					newFiles = append(newFiles, elem)
+					send = true
+				}
+			}
+			if send {
+				fileInfoStream <- newFiles
+			}
+		}
+	}()
+	return fileInfoStream
+}
+
+func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan mirror.Photo) {
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case p, more := <-uploadedPhotosStream:
 			if more {
 				s.metadataStore.Add(p)
@@ -118,14 +126,12 @@ func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan doma
 				}
 				return
 			}
-		case <-ctx.Done():
-			return
 		}
 	}
 }
 
-func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interface, metadataStream <-chan domain.Photo) <-chan domain.Photo {
-	uploadedPhotosStream := make(chan domain.Photo)
+func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interface, metadataStream <-chan mirror.Photo) <-chan mirror.Photo {
+	uploadedPhotosStream := make(chan mirror.Photo)
 	logctx = logctx.WithFields(log.Fields{
 		"action": "sync_with_remote_storage",
 	})
@@ -136,27 +142,27 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 	loop:
 		for {
 			select {
+			case <-ctx.Done():
+				return
 			case metaData, ok := <-metadataStream:
 				if !ok {
 					break loop
 				}
 				limiter <- struct{}{}
 				wg.Add(1)
-				go func(m domain.Photo) {
+				go func(m mirror.Photo) {
 					defer wg.Done()
 					defer func() { <-limiter }()
 					logctx = logctx.WithFields(log.Fields{
 						"photo_path": m.FilePath(),
 					})
-					c, cancel := context.WithTimeout(ctx, s.timeout)
-					defer cancel()
-					if err := s.uploadPhoto(c, logctx, m); err == nil {
-						s.uploadThumb(c, logctx, m)
+					if err := s.uploadPhoto(ctx, logctx, m); err == nil {
+						s.uploadThumb(ctx, logctx, m)
 						uploadedPhotosStream <- m
+					} else {
+						logctx.Errorf("error uploading file: %v", err)
 					}
 				}(metaData)
-			case <-ctx.Done():
-				return
 			}
 		}
 		wg.Wait()
@@ -164,40 +170,38 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 	return uploadedPhotosStream
 }
 
-func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img domain.Photo) error {
-	logctx.Info("uploading photo.")
-	//f, err := img.NewJpgReader()
-	//if err != nil {
-	//	logctx.WithError(err)
-	//	return err
-	//}
-	//defer f.Close()
-	//
-	//w := s.remotestrg.NewWriter(ctx, img.ID())
-	//_, err = io.Copy(w, f)
-	//if err != nil {
-	//	logctx.WithError(err)
-	//	return err
-	//}
-	//if err := w.Close(); err != nil {
-	//	logctx.WithError(err)
-	//	return err
-	//}
-	//logctx.Info("photo upload complete.")
+func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img mirror.Photo) error {
+	f, err := img.NewJpgReader()
+	if err != nil {
+		logctx.WithError(err).Errorf("error uploading file %s", img.FilePath)
+		return err
+	}
+	defer f.Close()
+
+	w := s.remotestrg.NewWriter(ctx, img.ID())
+	_, err = io.Copy(w, f)
+	if err != nil {
+		logctx.WithError(err).Errorf("error uploading file %s", img.FilePath)
+		fmt.Printf("err %v", err)
+		return err
+	}
+	if err := w.Close(); err != nil {
+		logctx.WithError(err).Error("error closing writer")
+		return err
+	}
+
 	return nil
 }
 
-func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img domain.Photo) {
-	//logctx.Info("uploading thumb.")
-	//w := s.remotestrg.NewWriter(ctx, img.ThumbID())
-	//_, err := io.Copy(w, bytes.NewReader(img.Thumbnail()))
-	//if err != nil {
-	//	logctx.WithError(err)
-	//	return
-	//}
-	//if err := w.Close(); err != nil {
-	//	logctx.WithError(err)
-	//	return
-	//}
-	//logctx.Info("thumb upload complete.")
+func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img mirror.Photo) {
+	w := s.remotestrg.NewWriter(ctx, img.ThumbID())
+	_, err := io.Copy(w, bytes.NewReader(img.Thumbnail()))
+	if err != nil {
+		logctx.WithError(err).Errorf("error uploading thumb file %s", img.FilePath)
+		return
+	}
+	if err := w.Close(); err != nil {
+		logctx.WithError(err).Error("error closing writer")
+		return
+	}
 }

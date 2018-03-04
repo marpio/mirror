@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/marpio/mirror/domain"
+
 	"github.com/spf13/afero"
 )
 
@@ -97,7 +97,7 @@ func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	afs := afero.NewOsFs()
 	rs := NewStorageReadSeeker(afs)
 	ex := NewExtractor(rs)
-	files := []*domain.FileInfo{&domain.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample2.jpg"}, &domain.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample.jpg"}}
+	files := []*mirror.FileInfo{&mirror.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample2.jpg"}, &mirror.FileInfo{FileModTime: time.Time{}, FilePath: "../test/sample.jpg"}}
 	ch := ex.Extract(context.Background(), log.Log, files)
 	for p := range ch {
 		c := p.CreatedAt()
@@ -114,6 +114,6 @@ type storageReadSeekerMock struct {
 func NewStorageReadSeeker(fs afero.Fs) *storageReadSeekerMock {
 	return &storageReadSeekerMock{fs: fs}
 }
-func (m *storageReadSeekerMock) NewReadSeeker(ctx context.Context, path string) (domain.ReadCloseSeeker, error) {
+func (m *storageReadSeekerMock) NewReadSeeker(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
 	return m.fs.Open(path)
 }

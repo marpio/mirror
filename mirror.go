@@ -1,4 +1,4 @@
-package domain
+package mirror
 
 import (
 	"context"
@@ -30,7 +30,7 @@ type StorageWriter interface {
 	Delete(ctx context.Context, path string) error
 }
 
-type LocalStorage interface {
+type ReadOnlyStorage interface {
 	StorageReader
 	StorageReadSeeker
 	SearchFiles(rootPath string, fileExt ...string) []*FileInfo

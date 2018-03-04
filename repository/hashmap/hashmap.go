@@ -5,8 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"sync"
 
-	"github.com/marpio/mirror/domain"
+	"github.com/marpio/mirror"
 )
 
 type item struct {
@@ -30,12 +31,13 @@ func (it item) Dir() string {
 type m map[string]map[string]*item
 
 type hashmapStore struct {
-	rs       domain.Storage
+	rs       mirror.Storage
 	data     m
 	filename string
+	mutex    sync.RWMutex
 }
 
-func New(ctx context.Context, rs domain.Storage, filename string) (domain.MetadataRepo, error) {
+func New(ctx context.Context, rs mirror.Storage, filename string) (mirror.MetadataRepo, error) {
 	var decodedMetadata m
 	exists := rs.Exists(ctx, filename)
 	if !exists {
@@ -70,8 +72,8 @@ func (s *hashmapStore) Reload(ctx context.Context) error {
 	return nil
 }
 
-func (s *hashmapStore) GetByDir(dir string) ([]domain.Item, error) {
-	var res = make([]domain.Item, 0)
+func (s *hashmapStore) GetByDir(dir string) ([]mirror.Item, error) {
+	var res = make([]mirror.Item, 0)
 	if p, ok := s.data[dir]; ok {
 		for _, x := range p {
 			res = append(res, x)
@@ -80,7 +82,7 @@ func (s *hashmapStore) GetByDir(dir string) ([]domain.Item, error) {
 	return res, nil
 }
 
-func (s *hashmapStore) GetByDirAndId(dir, id string) (domain.Item, error) {
+func (s *hashmapStore) GetByDirAndId(dir, id string) (mirror.Item, error) {
 	if p, ok := s.data[dir]; ok {
 		if f, ok := p[id]; ok {
 			return f, nil
@@ -90,13 +92,14 @@ func (s *hashmapStore) GetByDirAndId(dir, id string) (domain.Item, error) {
 }
 
 func (s *hashmapStore) Exists(id string) (bool, error) {
-	var found *item
+	s.mutex.RLock()
+	defer s.mutex.RUnlock()
 	for _, d := range s.data {
-		if p, ok := d[id]; ok {
-			found = p
+		if _, ok := d[id]; ok {
+			return true, nil
 		}
 	}
-	return (found != nil), nil
+	return false, nil
 }
 
 func (s *hashmapStore) getByID(id string) *item {
@@ -108,7 +111,9 @@ func (s *hashmapStore) getByID(id string) *item {
 	return nil
 }
 
-func (s *hashmapStore) Add(it domain.Item) error {
+func (s *hashmapStore) Add(it mirror.Item) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	x := &item{FileID: it.ID(), Directory: it.Dir()}
 	if _, ok := s.data[x.Directory]; !ok {
 		s.data[x.Directory] = make(map[string]*item)
@@ -128,8 +133,8 @@ func (s *hashmapStore) Persist(ctx context.Context) error {
 	return nil
 }
 
-func (s *hashmapStore) GetAll() []domain.Item {
-	var res = make([]domain.Item, 0)
+func (s *hashmapStore) GetAll() []mirror.Item {
+	var res = make([]mirror.Item, 0)
 	for _, d := range s.data {
 		for _, p := range d {
 			res = append(res, p)

@@ -1,4 +1,4 @@
-package remotestorage
+package storage
 
 import (
 	"bytes"

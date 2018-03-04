@@ -1,4 +1,4 @@
-FROM golang:1.9-alpine as builder
+FROM golang:1.10-alpine as builder
 WORKDIR /go/src/github.com/marpio/mirror/
 COPY . . 
 RUN cd cmd/mirror-web && go build -o app

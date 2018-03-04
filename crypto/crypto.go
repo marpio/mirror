@@ -30,7 +30,14 @@ func WithBlockSize(blockSize int) option {
 }
 
 func NewService(encryptionKey string, options ...option) Service {
-	cs := &srv{encryptionKey: encryptionKey, blockSize: 128 * 1024}
+	cs := &srv{encryptionKey: encryptionKey, blockSize: 16 * 1024}
+	secretKeyBytes, err := hex.DecodeString(encryptionKey)
+	if err != nil {
+		return nil
+	}
+	var secretKey [keyLen]byte
+	copy(secretKey[:], secretKeyBytes)
+	cs.secretKey = secretKey
 	for _, opt := range options {
 		opt(cs)
 	}
@@ -40,6 +47,7 @@ func NewService(encryptionKey string, options ...option) Service {
 type srv struct {
 	encryptionKey string
 	blockSize     int
+	secretKey     [keyLen]byte
 }
 
 func (s *srv) BlockSize() int {
@@ -55,32 +63,47 @@ func (s *srv) NonceSize() int {
 }
 
 func (s *srv) Seal(plaintxt []byte) ([]byte, error) {
-	secretKeyBytes, err := hex.DecodeString(s.encryptionKey)
-	if err != nil {
-		return nil, err
+	if len(plaintxt) == 0 {
+		return plaintxt, nil
 	}
-	var secretKey [keyLen]byte
-	copy(secretKey[:], secretKeyBytes)
+	rounds := len(plaintxt) / s.blockSize
+	rem := len(plaintxt) % s.blockSize
+	if rounds != 0 && rem != 0 {
+		return nil, fmt.Errorf("")
+	}
+	res := make([]byte, 0)
+	for i := 0; i < rounds; i++ {
+		start := i * s.blockSize
+		end := (i + 1) * s.blockSize
+		data, err := s.encrypt(plaintxt[start:end])
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, data...)
+	}
+	if rem > 0 {
+		data, err := s.encrypt(plaintxt[rounds*s.blockSize:])
+		if err != nil {
+			return nil, err
+		}
+		res = append(res, data...)
+	}
+	return res, nil
+}
+
+func (s *srv) encrypt(plaintxt []byte) ([]byte, error) {
 	nonce, err := genNonce()
 	if err != nil {
 		return nil, err
 	}
-	encrypted := secretbox.Seal(nonce[:], plaintxt[:], &nonce, &secretKey)
+	encrypted := secretbox.Seal(nonce[:], plaintxt[:], &nonce, &s.secretKey)
 	return encrypted, nil
 }
 
 func (s *srv) Open(encrypted []byte) ([]byte, error) {
-	secretKeyBytes, err := hex.DecodeString(s.encryptionKey)
-	if err != nil {
-		return nil, err
-	}
-
-	var secretKey [keyLen]byte
-	copy(secretKey[:], secretKeyBytes)
-
 	var decryptNonce [nonceLen]byte
 	copy(decryptNonce[:], encrypted[:nonceLen])
-	decrypted, ok := secretbox.Open(nil, encrypted[nonceLen:], &decryptNonce, &secretKey)
+	decrypted, ok := secretbox.Open(nil, encrypted[nonceLen:], &decryptNonce, &s.secretKey)
 	if !ok {
 		log.Printf("Encrypted len: %v", len(encrypted))
 		return nil, fmt.Errorf("Could not decrypt data")

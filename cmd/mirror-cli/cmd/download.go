@@ -18,14 +18,13 @@ import (
 	"context"
 	"io"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/apex/log"
 	"github.com/apex/log/handlers/text"
 	"github.com/marpio/mirror/crypto"
-	"github.com/marpio/mirror/remotestorage"
-	"github.com/marpio/mirror/remotestorage/b2"
+	"github.com/marpio/mirror/storage"
+	"github.com/marpio/mirror/storage/b2"
 	"github.com/spf13/cobra"
 )
 
@@ -40,10 +39,7 @@ var downloadCmd = &cobra.Command{
 
 func runDownload(localFilePath, remoteFilePath string) {
 	log.SetHandler(text.New(os.Stdout))
-	m, _ := filepath.Glob("/home/piotr/Pictures/Fotos/**/*.{jpeg,jpg,NEF}")
-	for _, x := range m {
-		log.Debug(x)
-	}
+
 	defer log.WithFields(log.Fields{
 		"localFilePath":  localFilePath,
 		"remoteFilePath": remoteFilePath,
@@ -56,7 +52,7 @@ func runDownload(localFilePath, remoteFilePath string) {
 	bucketName := os.Getenv("B2_BUCKET_NAME")
 
 	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
-	rs := remotestorage.New(rsBackend, crypto.NewService(encryptionKey))
+	rs := storage.NewRemote(rsBackend, crypto.NewService(encryptionKey))
 
 	f, err := os.Create(localFilePath)
 

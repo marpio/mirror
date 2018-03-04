@@ -6,7 +6,7 @@ import (
 	"log"
 
 	"github.com/kurin/blazer/b2"
-	"github.com/marpio/mirror/domain"
+	"github.com/marpio/mirror"
 )
 
 type b2Backend struct {
@@ -14,7 +14,7 @@ type b2Backend struct {
 	bucket *b2.Bucket
 }
 
-func New(ctx context.Context, b2id, b2key, bucketName string) domain.Storage {
+func New(ctx context.Context, b2id, b2key, bucketName string) mirror.Storage {
 	bucket := newB2Bucket(ctx, b2id, b2key, bucketName)
 	return &b2Backend{ctx: ctx, bucket: bucket}
 }
@@ -30,16 +30,13 @@ func (b *b2Backend) NewWriter(ctx context.Context, fileName string) io.WriteClos
 }
 
 func (b *b2Backend) Delete(ctx context.Context, fileName string) error {
-	if err := b.bucket.Object(fileName).Delete(ctx); err != nil {
-		return err
-	}
-	return nil
+	return b.bucket.Object(fileName).Delete(ctx)
 }
 
 func (b *b2Backend) Exists(ctx context.Context, fileName string) bool {
 	_, err := b.bucket.Object(fileName).Attrs(ctx)
 	if err != nil {
-		return b2.IsNotExist(err)
+		return !b2.IsNotExist(err)
 	}
 	return true
 }

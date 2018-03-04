@@ -14,21 +14,21 @@ import (
 	"time"
 
 	"github.com/apex/log"
-	"github.com/marpio/mirror/domain"
+	"github.com/marpio/mirror"
 	"github.com/nfnt/resize"
 	"github.com/rwcarlsen/goexif/exif"
 )
 
 type extractor struct {
-	rd domain.StorageReadSeeker
+	rd mirror.StorageReadSeeker
 }
 
-func NewExtractor(rd domain.StorageReadSeeker) domain.Extractor {
+func NewExtractor(rd mirror.StorageReadSeeker) mirror.Extractor {
 	return &extractor{rd: rd}
 }
 
-func (s extractor) Extract(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []*domain.FileInfo) <-chan domain.Photo {
-	metadataStream := make(chan domain.Photo, 100)
+func (s extractor) Extract(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []*mirror.FileInfo) <-chan mirror.Photo {
+	metadataStream := make(chan mirror.Photo, 20)
 
 	go func() {
 		defer close(metadataStream)
@@ -38,11 +38,10 @@ func (s extractor) Extract(ctx context.Context, logctx log.Interface, filesByDir
 			case <-ctx.Done():
 				return
 			default:
-				wg.Add(1)
-				go func(filesByDir []*domain.FileInfo) {
-					defer wg.Done()
-					s.extractMetadataDir(ctx, logctx, metadataStream, filesByDir)
-				}(paths)
+				md := extractMetadataDir(ctx, logctx, paths, s.rd)
+				for _, p := range md {
+					metadataStream <- p
+				}
 			}
 		}
 		wg.Wait()
@@ -50,41 +49,56 @@ func (s extractor) Extract(ctx context.Context, logctx log.Interface, filesByDir
 	return metadataStream
 }
 
-func (s extractor) extractMetadataDir(ctx context.Context, logctx log.Interface, metadataStream chan<- domain.Photo, photos []*domain.FileInfo) {
+func extractMetadataDir(ctx context.Context, logctx log.Interface, photos []*mirror.FileInfo, rd mirror.StorageReadSeeker) []mirror.Photo {
+	md := make([]mirror.Photo, len(photos), len(photos))
+	var wg sync.WaitGroup
+	wg.Add(len(photos))
+	for i, ph := range photos {
+		go func(i int, ph *mirror.FileInfo) {
+			defer wg.Done()
+			logctx = log.WithFields(log.Fields{
+				"photo_path": ph.FilePath,
+			})
+			var p mirror.Photo
+			var err error
+			ext := strings.ToLower(ph.FileExt)
+			switch ext {
+			case ".nef":
+				p, err = extractMetadataNEF(ctx, ph, rd)
+			case ".jpg", ".jpeg":
+				p, err = extractMetadataJpg(ctx, logctx, ph, rd)
+			default:
+				err = fmt.Errorf("not supported format %s", ext)
+			}
+			if err != nil {
+				logctx.Errorf("error extracting metadata %v", err)
+				return
+			}
+			md[i] = p
+		}(i, ph)
+	}
+	wg.Wait()
+
 	dirCreatedAt := time.Time{}
-	md := make([]domain.Photo, 0, len(photos))
-loop:
-	for _, ph := range photos {
-		logctx = log.WithFields(log.Fields{
-			"photo_path": ph.FilePath,
-		})
-		var p domain.Photo
-		var err error
-		ext := strings.ToLower(ph.FileExt)
-		switch ext {
-		case ".nef":
-			p, err = extractMetadataNEF(ctx, ph, s.rd)
-		case ".jpg", ".jpeg":
-			p, err = extractMetadataJpg(ctx, logctx, ph, s.rd)
-		default:
-			err = fmt.Errorf("not supported format %s", ext)
+	res := make([]mirror.Photo, 0)
+	for _, p := range md {
+		if p != nil {
+			res = append(res, p)
+			if (p.CreatedAt() != time.Time{}) {
+				dirCreatedAt = p.CreatedAt()
+			}
 		}
-		if err != nil {
-			logctx.Errorf("error extracting metadata %v", err)
-			continue loop
-		}
-		dirCreatedAt = p.CreatedAt()
-		md = append(md, p)
 	}
-	for _, meta := range md {
-		if (meta.CreatedAt() == time.Time{}) {
-			meta.SetCreatedAt(dirCreatedAt)
+
+	for _, p := range res {
+		if (p.CreatedAt() == time.Time{}) {
+			p.SetCreatedAt(dirCreatedAt)
 		}
-		metadataStream <- meta
 	}
+	return res
 }
 
-func extractMetadataNEF(ctx context.Context, fi *domain.FileInfo, rs domain.StorageReadSeeker) (domain.Photo, error) {
+func extractMetadataNEF(ctx context.Context, fi *mirror.FileInfo, rs mirror.StorageReadSeeker) (mirror.Photo, error) {
 	f, err := rs.NewReadSeeker(ctx, fi.FilePath)
 	if err != nil {
 		return nil, err
@@ -100,11 +114,11 @@ func extractMetadataNEF(ctx context.Context, fi *domain.FileInfo, rs domain.Stor
 		return nil, err
 	}
 	readerFn := func() (io.ReadCloser, error) { return extractJpgNEF(fi.FilePath) }
-	p := domain.NewPhoto(fi, &domain.Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
+	p := mirror.NewPhoto(fi, &mirror.Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
 	return p, nil
 }
 
-func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi *domain.FileInfo, rs domain.StorageReadSeeker) (domain.Photo, error) {
+func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi *mirror.FileInfo, rs mirror.StorageReadSeeker) (mirror.Photo, error) {
 	f, err := rs.NewReadSeeker(ctx, fi.FilePath)
 	if err != nil {
 		logctx.Infof("error %v", fi.FilePath)
@@ -125,7 +139,7 @@ func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi *domain.Fi
 		return nil, err
 	}
 	readerFn := func() (io.ReadCloser, error) { return rs.NewReadSeeker(ctx, fi.FilePath) }
-	p := domain.NewPhoto(fi, &domain.Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
+	p := mirror.NewPhoto(fi, &mirror.Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
 
 	return p, nil
 }
@@ -161,7 +175,7 @@ func extractJpgNEF(path string) (io.ReadCloser, error) {
 	return r, nil
 }
 
-func extractCreatedAt(r domain.ReadCloseSeeker) (time.Time, error) {
+func extractCreatedAt(r mirror.ReadCloseSeeker) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return time.Time{}, err
