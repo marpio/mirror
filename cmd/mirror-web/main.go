@@ -14,10 +14,10 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/marpio/mirror"
 	"github.com/marpio/mirror/crypto"
+	"github.com/marpio/mirror/metadata/repo"
 	"github.com/marpio/mirror/storage"
+	"github.com/marpio/mirror/storage/remotebackend"
 
-	"github.com/marpio/mirror/repository/hashmap"
-	"github.com/marpio/mirror/storage/b2"
 	"github.com/spf13/afero"
 )
 
@@ -38,7 +38,7 @@ func main() {
 	username := getenv("MIRROR_USERNAME")
 	password := getenv("MIRROR_PASSWORD")
 	ctx := context.Background()
-	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
+	rsBackend := remotebackend.NewB2(ctx, b2id, b2key, bucketName)
 	rs := storage.NewRemote(rsBackend, crypto.NewService(encryptionKey))
 	appFs := afero.NewOsFs()
 	metadataStore := createMetadataStore(ctx, appFs, repoFileName, rs)
@@ -67,7 +67,7 @@ func configureRouter(ctx context.Context, metadataStore mirror.MetadataRepoReade
 }
 
 func createMetadataStore(ctx context.Context, fs afero.Fs, imgDBPath string, remotestorage mirror.Storage) mirror.MetadataRepoReader {
-	repo, err := hashmap.New(ctx, remotestorage, imgDBPath)
+	repo, err := repo.NewHashmap(ctx, remotestorage, imgDBPath)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error creating metadata repository: %v", err)
 		os.Exit(-1)
