@@ -82,7 +82,3 @@ type Photo interface {
 	Thumbnail() []byte
 	NewJpgReader() (io.ReadCloser, error)
 }
-type Metadata struct {
-	CreatedAt time.Time
-	Thumbnail []byte
-}

@@ -42,7 +42,7 @@ func (fi *fileInfo) ID() string {
 	return fi.id
 }
 
-func newFileInfo(filePath string, fileExt string, readFile func(string) ([]byte, error), generateFileHash func([]byte) string) mirror.FileInfo {
+func NewFileInfo(filePath string, fileExt string, readFile func(string) ([]byte, error), generateFileHash func([]byte) string) mirror.FileInfo {
 	return &fileInfo{
 		readFile:         readFile,
 		generateFileHash: generateFileHash,
@@ -87,7 +87,7 @@ func (repo *ReadOnlyLocalStorage) SearchFiles(rootPath string, fileExt ...string
 		for _, ext := range fileExt {
 			hasExt = strings.HasSuffix(strings.ToLower(fi.Name()), ext)
 			if hasExt {
-				finf := newFileInfo(pth, path.Ext(pth), ioutil.ReadFile, repo.generateFileHash)
+				finf := NewFileInfo(pth, path.Ext(pth), ioutil.ReadFile, repo.generateFileHash)
 				files = append(files, finf)
 				break
 			}

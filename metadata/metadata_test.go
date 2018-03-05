@@ -10,6 +10,7 @@ import (
 
 	"github.com/apex/log"
 	"github.com/marpio/mirror"
+	"github.com/marpio/mirror/storage"
 
 	"github.com/spf13/afero"
 )
@@ -97,7 +98,16 @@ func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	afs := afero.NewOsFs()
 	rs := NewStorageReadSeeker(afs)
 	ex := NewExtractor(rs)
-	files := []*mirror.FileInfo{&mirror.FileInfo{FilePath: "../test/sample2.jpg"}, &mirror.FileInfo{FilePath: "../test/sample.jpg"}}
+	ext := ".jpg"
+	path1 := "../test/sample.jpg"
+	path2 := "../test/sample2.jpg"
+	fi1 := storage.NewFileInfo(path1, ext,
+		func(string) ([]byte, error) { return ioutil.ReadFile(path1) },
+		func([]byte) string { return "abc111" })
+	fi2 := storage.NewFileInfo(path2, ext,
+		func(string) ([]byte, error) { return ioutil.ReadFile(path2) },
+		func([]byte) string { return "abc222" })
+	files := []mirror.FileInfo{fi1, fi2}
 	ch := ex.Extract(context.Background(), log.Log, files)
 	for _, p := range ch {
 		c := p.CreatedAt()

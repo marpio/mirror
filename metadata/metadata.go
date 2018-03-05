@@ -19,9 +19,14 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
+type Metadata struct {
+	CreatedAt time.Time
+	Thumbnail []byte
+}
+
 type Photo struct {
 	mirror.FileInfo
-	*mirror.Metadata
+	*Metadata
 	jpegReaderProvider func() (io.ReadCloser, error)
 }
 
@@ -45,7 +50,7 @@ func (ph *Photo) NewJpgReader() (io.ReadCloser, error) {
 	return ph.jpegReaderProvider()
 }
 
-func NewPhoto(fi mirror.FileInfo, meta *mirror.Metadata, jpegReaderProvider func() (io.ReadCloser, error)) mirror.Photo {
+func NewPhoto(fi mirror.FileInfo, meta *Metadata, jpegReaderProvider func() (io.ReadCloser, error)) mirror.Photo {
 	return &Photo{
 		FileInfo:           fi,
 		Metadata:           meta,
@@ -134,7 +139,7 @@ func extractMetadataNEF(ctx context.Context, fi mirror.FileInfo, rs mirror.Stora
 		return nil, err
 	}
 	readerFn := func() (io.ReadCloser, error) { return extractJpgNEF(fi.FilePath()) }
-	p := NewPhoto(fi, &mirror.Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
+	p := NewPhoto(fi, &Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
 	return p, nil
 }
 
@@ -159,7 +164,7 @@ func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi mirror.Fil
 		return nil, err
 	}
 	readerFn := func() (io.ReadCloser, error) { return rs.NewReadSeeker(ctx, fi.FilePath()) }
-	p := NewPhoto(fi, &mirror.Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
+	p := NewPhoto(fi, &Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
 
 	return p, nil
 }

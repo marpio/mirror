@@ -26,7 +26,7 @@ import (
 	"github.com/apex/log/handlers/text"
 	"github.com/marpio/mirror/crypto"
 	"github.com/marpio/mirror/metadata"
-	"github.com/marpio/mirror/repository/hashmap"
+	"github.com/marpio/mirror/metadata/repo"
 	"github.com/marpio/mirror/storage"
 	"github.com/marpio/mirror/storage/remotebackend"
 	"github.com/marpio/mirror/syncronizer"
@@ -82,7 +82,7 @@ func runSync(dir string) {
 	rs := storage.NewRemote(rsBackend, crypto.NewService(encryptionKey))
 
 	dbPath := getenv("REPO")
-	repo, err := hashmap.New(ctx, rs, dbPath)
+	repo, err := repo.NewHashmap(ctx, rs, dbPath)
 	if err != nil {
 		log.Fatalf("error creating metadata repository: %v", err)
 	}

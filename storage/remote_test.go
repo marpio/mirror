@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/marpio/mirror/crypto"
-	"github.com/marpio/mirror/storage/filesystem"
+	"github.com/marpio/mirror/storage/remotebackend"
 	"github.com/spf13/afero"
 )
 
@@ -32,7 +32,7 @@ func (writeCloser) Close() error { return nil }
 
 func TestWriteRead(t *testing.T) {
 	afs := afero.NewMemMapFs()
-	b := filesystem.New(afs)
+	b := remotebackend.NewFileSystem(afs)
 	c := crypto.NewService(encKey)
 	rs := NewRemote(b, c)
 

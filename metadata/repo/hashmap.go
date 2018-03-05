@@ -1,4 +1,4 @@
-package hashmap
+package repo
 
 import (
 	"context"
@@ -37,7 +37,7 @@ type HashmapStore struct {
 	mutex    sync.RWMutex
 }
 
-func New(ctx context.Context, rs mirror.Storage, filename string) (*HashmapStore, error) {
+func NewHashmap(ctx context.Context, rs mirror.Storage, filename string) (*HashmapStore, error) {
 	var decodedMetadata m
 	exists := rs.Exists(ctx, filename)
 	if !exists {
