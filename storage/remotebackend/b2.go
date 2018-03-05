@@ -1,4 +1,4 @@
-package b2
+package remotebackend
 
 import (
 	"context"
@@ -6,34 +6,33 @@ import (
 	"log"
 
 	"github.com/kurin/blazer/b2"
-	"github.com/marpio/mirror"
 )
 
-type b2Backend struct {
+type B2 struct {
 	ctx    context.Context
 	bucket *b2.Bucket
 }
 
-func New(ctx context.Context, b2id, b2key, bucketName string) mirror.Storage {
+func NewB2(ctx context.Context, b2id, b2key, bucketName string) *B2 {
 	bucket := newB2Bucket(ctx, b2id, b2key, bucketName)
-	return &b2Backend{ctx: ctx, bucket: bucket}
+	return &B2{ctx: ctx, bucket: bucket}
 }
 
-func (b *b2Backend) NewReader(ctx context.Context, fileName string) (io.ReadCloser, error) {
+func (b *B2) NewReader(ctx context.Context, fileName string) (io.ReadCloser, error) {
 	rd := b.bucket.Object(fileName).NewReader(ctx)
 	return rd, nil
 }
 
-func (b *b2Backend) NewWriter(ctx context.Context, fileName string) io.WriteCloser {
+func (b *B2) NewWriter(ctx context.Context, fileName string) io.WriteCloser {
 	wr := b.bucket.Object(fileName).NewWriter(ctx)
 	return wr
 }
 
-func (b *b2Backend) Delete(ctx context.Context, fileName string) error {
+func (b *B2) Delete(ctx context.Context, fileName string) error {
 	return b.bucket.Object(fileName).Delete(ctx)
 }
 
-func (b *b2Backend) Exists(ctx context.Context, fileName string) bool {
+func (b *B2) Exists(ctx context.Context, fileName string) bool {
 	_, err := b.bucket.Object(fileName).Attrs(ctx)
 	if err != nil {
 		return !b2.IsNotExist(err)

@@ -51,24 +51,24 @@ func newFileInfo(filePath string, fileExt string, readFile func(string) ([]byte,
 	}
 }
 
-type local struct {
+type ReadOnlyLocalStorage struct {
 	fs               afero.Fs
 	generateFileHash func([]byte) string
 }
 
-func NewLocal(fs afero.Fs, generateFileHash func([]byte) string) mirror.ReadOnlyStorage {
-	return &local{fs: fs, generateFileHash: generateFileHash}
+func NewLocal(fs afero.Fs, generateFileHash func([]byte) string) *ReadOnlyLocalStorage {
+	return &ReadOnlyLocalStorage{fs: fs, generateFileHash: generateFileHash}
 }
 
-func (repo *local) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
+func (repo *ReadOnlyLocalStorage) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
 	return repo.fs.Open(path)
 }
 
-func (repo *local) NewReadSeeker(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
+func (repo *ReadOnlyLocalStorage) NewReadSeeker(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
 	return repo.fs.Open(path)
 }
 
-func (repo *local) SearchFiles(rootPath string, fileExt ...string) []mirror.FileInfo {
+func (repo *ReadOnlyLocalStorage) SearchFiles(rootPath string, fileExt ...string) []mirror.FileInfo {
 	files := make([]mirror.FileInfo, 0)
 	err := afero.Walk(repo.fs, rootPath, func(pth string, fi os.FileInfo, err error) error {
 

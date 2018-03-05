@@ -30,14 +30,14 @@ func (it entry) Dir() string {
 
 type m map[string]map[string]*entry
 
-type hashmapStore struct {
+type HashmapStore struct {
 	rs       mirror.Storage
 	data     m
 	filename string
 	mutex    sync.RWMutex
 }
 
-func New(ctx context.Context, rs mirror.Storage, filename string) (mirror.MetadataRepo, error) {
+func New(ctx context.Context, rs mirror.Storage, filename string) (*HashmapStore, error) {
 	var decodedMetadata m
 	exists := rs.Exists(ctx, filename)
 	if !exists {
@@ -53,10 +53,10 @@ func New(ctx context.Context, rs mirror.Storage, filename string) (mirror.Metada
 			decodedMetadata = make(m)
 		}
 	}
-	return &hashmapStore{rs: rs, data: decodedMetadata, filename: filename}, nil
+	return &HashmapStore{rs: rs, data: decodedMetadata, filename: filename}, nil
 }
 
-func (s *hashmapStore) Reload(ctx context.Context) error {
+func (s *HashmapStore) Reload(ctx context.Context) error {
 	var decodedMetadata m
 	r, err := s.rs.NewReader(ctx, s.filename)
 	if err != nil {
@@ -72,7 +72,7 @@ func (s *hashmapStore) Reload(ctx context.Context) error {
 	return nil
 }
 
-func (s *hashmapStore) GetByDir(dir string) ([]mirror.RepoEntry, error) {
+func (s *HashmapStore) GetByDir(dir string) ([]mirror.RepoEntry, error) {
 	var res = make([]mirror.RepoEntry, 0)
 	if p, ok := s.data[dir]; ok {
 		for _, x := range p {
@@ -82,7 +82,7 @@ func (s *hashmapStore) GetByDir(dir string) ([]mirror.RepoEntry, error) {
 	return res, nil
 }
 
-func (s *hashmapStore) GetByDirAndId(dir, id string) (mirror.RepoEntry, error) {
+func (s *HashmapStore) GetByDirAndId(dir, id string) (mirror.RepoEntry, error) {
 	if p, ok := s.data[dir]; ok {
 		if f, ok := p[id]; ok {
 			return f, nil
@@ -91,7 +91,7 @@ func (s *hashmapStore) GetByDirAndId(dir, id string) (mirror.RepoEntry, error) {
 	return nil, nil
 }
 
-func (s *hashmapStore) Exists(id string) (bool, error) {
+func (s *HashmapStore) Exists(id string) (bool, error) {
 	s.mutex.RLock()
 	defer s.mutex.RUnlock()
 	for _, d := range s.data {
@@ -102,7 +102,7 @@ func (s *hashmapStore) Exists(id string) (bool, error) {
 	return false, nil
 }
 
-func (s *hashmapStore) getByID(id string) *entry {
+func (s *HashmapStore) getByID(id string) *entry {
 	for _, d := range s.data {
 		if p, ok := d[id]; ok {
 			return p
@@ -111,7 +111,7 @@ func (s *hashmapStore) getByID(id string) *entry {
 	return nil
 }
 
-func (s *hashmapStore) Add(it mirror.RepoEntry) error {
+func (s *HashmapStore) Add(it mirror.RepoEntry) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	x := &entry{FileID: it.ID(), Directory: it.Dir()}
@@ -124,7 +124,7 @@ func (s *hashmapStore) Add(it mirror.RepoEntry) error {
 	return nil
 }
 
-func (s *hashmapStore) Persist(ctx context.Context) error {
+func (s *HashmapStore) Persist(ctx context.Context) error {
 	w := s.rs.NewWriter(ctx, s.filename)
 	defer w.Close()
 	en := json.NewEncoder(w)
@@ -133,7 +133,7 @@ func (s *hashmapStore) Persist(ctx context.Context) error {
 	return nil
 }
 
-func (s *hashmapStore) GetAll() []mirror.RepoEntry {
+func (s *HashmapStore) GetAll() []mirror.RepoEntry {
 	var res = make([]mirror.RepoEntry, 0)
 	for _, d := range s.data {
 		for _, p := range d {
@@ -143,7 +143,7 @@ func (s *hashmapStore) GetAll() []mirror.RepoEntry {
 	return res
 }
 
-func (s *hashmapStore) Delete(id string) error {
+func (s *HashmapStore) Delete(id string) error {
 	for _, d := range s.data {
 		if _, ok := d[id]; ok {
 			delete(d, id)
@@ -153,7 +153,7 @@ func (s *hashmapStore) Delete(id string) error {
 	return fmt.Errorf("could not find %v", id)
 }
 
-func (s *hashmapStore) GetDirs() ([]string, error) {
+func (s *HashmapStore) GetDirs() ([]string, error) {
 	ds := make(sort.StringSlice, 0)
 	for k := range s.data {
 		ds = append(ds, k)

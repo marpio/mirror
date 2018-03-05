@@ -11,7 +11,7 @@ import (
 	"golang.org/x/crypto/nacl/secretbox"
 )
 
-func GenerateFileSha256(data []byte) string {
+func GenerateSha256(data []byte) string {
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("%x", h)
 }

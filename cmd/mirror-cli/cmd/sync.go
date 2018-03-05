@@ -28,7 +28,7 @@ import (
 	"github.com/marpio/mirror/metadata"
 	"github.com/marpio/mirror/repository/hashmap"
 	"github.com/marpio/mirror/storage"
-	"github.com/marpio/mirror/storage/b2"
+	"github.com/marpio/mirror/storage/remotebackend"
 	"github.com/marpio/mirror/syncronizer"
 	"github.com/spf13/afero"
 	"github.com/spf13/cobra"
@@ -62,12 +62,6 @@ func runSync(dir string) {
 		json.New(logFile),
 	))
 
-	encryptionKey := getenv("ENCR_KEY")
-	b2id := getenv("B2_ACCOUNT_ID")
-	b2key := getenv("B2_ACCOUNT_KEY")
-	bucketName := getenv("B2_BUCKET_NAME")
-	dbPath := getenv("REPO")
-
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
 	defer close(sigs)
@@ -80,9 +74,14 @@ func runSync(dir string) {
 		"syncing_dir": dir,
 	})
 
-	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
+	encryptionKey := getenv("ENCR_KEY")
+	b2id := getenv("B2_ACCOUNT_ID")
+	b2key := getenv("B2_ACCOUNT_KEY")
+	bucketName := getenv("B2_BUCKET_NAME")
+	rsBackend := remotebackend.NewB2(ctx, b2id, b2key, bucketName)
 	rs := storage.NewRemote(rsBackend, crypto.NewService(encryptionKey))
 
+	dbPath := getenv("REPO")
 	repo, err := hashmap.New(ctx, rs, dbPath)
 	if err != nil {
 		log.Fatalf("error creating metadata repository: %v", err)
@@ -99,7 +98,7 @@ func runSync(dir string) {
 		}
 	}()
 	appFs := afero.NewOsFs()
-	localFilesRepo := storage.NewLocal(appFs, crypto.GenerateFileSha256)
+	localFilesRepo := storage.NewLocal(appFs, crypto.GenerateSha256)
 	syncronizer := syncronizer.New(rs,
 		repo,
 		localFilesRepo,

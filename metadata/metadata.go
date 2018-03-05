@@ -19,57 +19,57 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-type photo struct {
+type Photo struct {
 	mirror.FileInfo
 	*mirror.Metadata
 	jpegReaderProvider func() (io.ReadCloser, error)
 }
 
-func (ph *photo) FilePath() string {
+func (ph *Photo) FilePath() string {
 	return ph.FileInfo.FilePath()
 }
 
-func (ph *photo) CreatedAt() time.Time {
+func (ph *Photo) CreatedAt() time.Time {
 	return ph.Metadata.CreatedAt
 }
 
-func (ph *photo) SetCreatedAt(t time.Time) {
+func (ph *Photo) SetCreatedAt(t time.Time) {
 	ph.Metadata.CreatedAt = t
 }
 
-func (ph *photo) Thumbnail() []byte {
+func (ph *Photo) Thumbnail() []byte {
 	return ph.Metadata.Thumbnail
 }
 
-func (ph *photo) NewJpgReader() (io.ReadCloser, error) {
+func (ph *Photo) NewJpgReader() (io.ReadCloser, error) {
 	return ph.jpegReaderProvider()
 }
 
 func NewPhoto(fi mirror.FileInfo, meta *mirror.Metadata, jpegReaderProvider func() (io.ReadCloser, error)) mirror.Photo {
-	return &photo{
+	return &Photo{
 		FileInfo:           fi,
 		Metadata:           meta,
 		jpegReaderProvider: jpegReaderProvider,
 	}
 }
 
-func (p *photo) ThumbID() string {
+func (p *Photo) ThumbID() string {
 	return "thumb_" + p.ID()
 }
 
-func (p *photo) Dir() string {
+func (p *Photo) Dir() string {
 	return fmt.Sprintf("%d-%02d", p.CreatedAt().Year(), p.CreatedAt().Month())
 }
 
-type extractor struct {
+type Extractor struct {
 	rd mirror.StorageReadSeeker
 }
 
-func NewExtractor(rd mirror.StorageReadSeeker) mirror.Extractor {
-	return &extractor{rd: rd}
+func NewExtractor(rd mirror.StorageReadSeeker) *Extractor {
+	return &Extractor{rd: rd}
 }
 
-func (s extractor) Extract(ctx context.Context, logctx log.Interface, photos []mirror.FileInfo) []mirror.Photo {
+func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []mirror.FileInfo) []mirror.Photo {
 	md := make([]mirror.Photo, len(photos), len(photos))
 	var wg sync.WaitGroup
 	wg.Add(len(photos))

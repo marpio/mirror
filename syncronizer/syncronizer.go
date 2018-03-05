@@ -113,7 +113,7 @@ func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pa
 }
 
 func (s *Service) ExtractMetadata(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []mirror.FileInfo) <-chan mirror.Photo {
-	metadataStream := make(chan mirror.Photo, 20)
+	metadataStream := make(chan mirror.Photo, 2*s.maxConcurrentUploads)
 
 	go func() {
 		defer close(metadataStream)

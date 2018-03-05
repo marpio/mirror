@@ -8,11 +8,11 @@ import (
 	"github.com/marpio/mirror/crypto"
 )
 
-func NewRemote(b mirror.Storage, c crypto.Service) mirror.Storage {
-	return &rs{backend: b, crpt: c}
+func NewRemote(b mirror.Storage, c crypto.Service) *RemoteStorage {
+	return &RemoteStorage{backend: b, crpt: c}
 }
 
-type rs struct {
+type RemoteStorage struct {
 	backend mirror.Storage
 	crpt    crypto.Service
 }
@@ -27,7 +27,7 @@ type reader struct {
 	crpt    crypto.Service
 }
 
-func (b *rs) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
+func (b *RemoteStorage) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
 	bufSize := b.crpt.NonceSize() + b.crpt.BlockSize() + b.crpt.Overhead()
 	rd, err := b.backend.NewReader(ctx, path)
 	if err != nil {
@@ -91,7 +91,7 @@ type writer struct {
 	crpt crypto.Service
 }
 
-func (b *rs) NewWriter(ctx context.Context, path string) io.WriteCloser {
+func (b *RemoteStorage) NewWriter(ctx context.Context, path string) io.WriteCloser {
 	return &writer{wr: b.backend.NewWriter(ctx, path), buf: make([]byte, 0), crpt: b.crpt}
 }
 
@@ -139,10 +139,10 @@ func (b *writer) Close() error {
 	return nil
 }
 
-func (b *rs) Exists(ctx context.Context, fileName string) bool {
+func (b *RemoteStorage) Exists(ctx context.Context, fileName string) bool {
 	return b.backend.Exists(ctx, fileName)
 }
 
-func (b *rs) Delete(ctx context.Context, fileName string) error {
+func (b *RemoteStorage) Delete(ctx context.Context, fileName string) error {
 	return b.backend.Delete(ctx, fileName)
 }

@@ -24,7 +24,7 @@ import (
 	"github.com/apex/log/handlers/text"
 	"github.com/marpio/mirror/crypto"
 	"github.com/marpio/mirror/storage"
-	"github.com/marpio/mirror/storage/b2"
+	"github.com/marpio/mirror/storage/remotebackend"
 	"github.com/spf13/cobra"
 )
 
@@ -51,7 +51,7 @@ func runDownload(localFilePath, remoteFilePath string) {
 	b2key := os.Getenv("B2_ACCOUNT_KEY")
 	bucketName := os.Getenv("B2_BUCKET_NAME")
 
-	rsBackend := b2.New(ctx, b2id, b2key, bucketName)
+	rsBackend := remotebackend.NewB2(ctx, b2id, b2key, bucketName)
 	rs := storage.NewRemote(rsBackend, crypto.NewService(encryptionKey))
 
 	f, err := os.Create(localFilePath)
