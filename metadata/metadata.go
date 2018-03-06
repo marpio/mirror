@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os/exec"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -50,7 +51,7 @@ func (ph *Photo) NewJpgReader() (io.ReadCloser, error) {
 	return ph.jpegReaderProvider()
 }
 
-func NewPhoto(fi mirror.FileInfo, meta *Metadata, jpegReaderProvider func() (io.ReadCloser, error)) mirror.Photo {
+func NewPhoto(fi mirror.FileInfo, meta *Metadata, jpegReaderProvider func() (io.ReadCloser, error)) mirror.LocalPhoto {
 	return &Photo{
 		FileInfo:           fi,
 		Metadata:           meta,
@@ -74,8 +75,8 @@ func NewExtractor(rd mirror.StorageReadSeeker) *Extractor {
 	return &Extractor{rd: rd}
 }
 
-func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []mirror.FileInfo) []mirror.Photo {
-	md := make([]mirror.Photo, len(photos), len(photos))
+func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []mirror.FileInfo) []mirror.LocalPhoto {
+	md := make([]mirror.LocalPhoto, len(photos), len(photos))
 	var wg sync.WaitGroup
 	wg.Add(len(photos))
 	for i, ph := range photos {
@@ -84,9 +85,9 @@ func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []m
 			logctx = log.WithFields(log.Fields{
 				"photo_path": ph.FilePath,
 			})
-			var p mirror.Photo
+			var p mirror.LocalPhoto
 			var err error
-			ext := strings.ToLower(ph.FileExt())
+			ext := strings.ToLower(path.Ext(ph.FilePath()))
 			switch ext {
 			case ".nef":
 				p, err = extractMetadataNEF(ctx, ph, s.rd)
@@ -105,7 +106,7 @@ func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []m
 	wg.Wait()
 
 	dirCreatedAt := time.Time{}
-	res := make([]mirror.Photo, 0)
+	res := make([]mirror.LocalPhoto, 0)
 	for _, p := range md {
 		if p != nil {
 			res = append(res, p)
@@ -123,8 +124,8 @@ func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []m
 	return res
 }
 
-func extractMetadataNEF(ctx context.Context, fi mirror.FileInfo, rs mirror.StorageReadSeeker) (mirror.Photo, error) {
-	f, err := rs.NewReadSeeker(ctx, fi.FilePath())
+func extractMetadataNEF(ctx context.Context, fi mirror.FileInfo, rs mirror.StorageReadSeeker) (mirror.LocalPhoto, error) {
+	f, err := rs.NewReader(ctx, fi.FilePath())
 	if err != nil {
 		return nil, err
 	}
@@ -143,8 +144,8 @@ func extractMetadataNEF(ctx context.Context, fi mirror.FileInfo, rs mirror.Stora
 	return p, nil
 }
 
-func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi mirror.FileInfo, rs mirror.StorageReadSeeker) (mirror.Photo, error) {
-	f, err := rs.NewReadSeeker(ctx, fi.FilePath())
+func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi mirror.FileInfo, rs mirror.StorageReadSeeker) (mirror.LocalPhoto, error) {
+	f, err := rs.NewReader(ctx, fi.FilePath())
 	if err != nil {
 		logctx.Infof("error %v", fi.FilePath())
 		return nil, err
@@ -163,7 +164,7 @@ func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi mirror.Fil
 		logctx.Infof("error %v", fi.FilePath())
 		return nil, err
 	}
-	readerFn := func() (io.ReadCloser, error) { return rs.NewReadSeeker(ctx, fi.FilePath()) }
+	readerFn := func() (io.ReadCloser, error) { return rs.NewReader(ctx, fi.FilePath()) }
 	p := NewPhoto(fi, &Metadata{CreatedAt: createdAt, Thumbnail: thumb}, readerFn)
 
 	return p, nil

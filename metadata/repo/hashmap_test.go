@@ -40,13 +40,13 @@ func initRepo(afs afero.Fs) (mirror.MetadataRepo, afero.Fs) {
 }
 func TestExists(t *testing.T) {
 	s, _ := setup()
-	path1 := "/path/to/file"
-	path2 := "/path/to/file2"
-	ext := ".jpg"
-	fi1 := storage.NewFileInfo(path1, ext,
+	path1 := "/path/to/file.jpg"
+	path2 := "/path/to/file2.jpg"
+
+	fi1 := storage.NewFileInfo(path1,
 		func(string) ([]byte, error) { return make([]byte, 0), nil },
 		func([]byte) string { return "abc111" })
-	fi2 := storage.NewFileInfo(path2, ext,
+	fi2 := storage.NewFileInfo(path2,
 		func(string) ([]byte, error) { return make([]byte, 0), nil },
 		func([]byte) string { return "abc222" })
 
@@ -68,10 +68,10 @@ func TestExists(t *testing.T) {
 
 func TestGetByDir(t *testing.T) {
 	s, _ := setup()
-	path1 := "/path/to/file"
-	ext := ".jpg"
+	path1 := "/path/to/file.jpg"
+
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	fi1 := storage.NewFileInfo(path1, ext,
+	fi1 := storage.NewFileInfo(path1,
 		func(string) ([]byte, error) { return make([]byte, 0), nil },
 		func([]byte) string { return "abc111" })
 	ph := metadata.NewPhoto(
@@ -90,13 +90,13 @@ func TestGetDirs(t *testing.T) {
 
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 	m2 := time.Date(2017, 6, 1, 0, 0, 0, 0, time.UTC)
-	path1 := "/path/to/file"
-	path2 := "/path/to/file2"
-	ext := ".jpg"
-	fi1 := storage.NewFileInfo(path1, ext,
+	path1 := "/path/to/file.jpg"
+	path2 := "/path/to/file2.jpg"
+
+	fi1 := storage.NewFileInfo(path1,
 		func(string) ([]byte, error) { return make([]byte, 0), nil },
 		func([]byte) string { return "abc111" })
-	fi2 := storage.NewFileInfo(path2, ext,
+	fi2 := storage.NewFileInfo(path2,
 		func(string) ([]byte, error) { return make([]byte, 0), nil },
 		func([]byte) string { return "abc222" })
 	ph1 := metadata.NewPhoto(
@@ -120,10 +120,10 @@ func TestGetDirs(t *testing.T) {
 
 func TestDelete(t *testing.T) {
 	s, _ := setup()
-	path1 := "/path/to/file"
+	path1 := "/path/to/file.jpg"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	ext := ".jpg"
-	fi1 := storage.NewFileInfo(path1, ext,
+
+	fi1 := storage.NewFileInfo(path1,
 		func(string) ([]byte, error) { return make([]byte, 0), nil },
 		func([]byte) string { return "abc111" })
 	p1 := metadata.NewPhoto(
@@ -140,10 +140,10 @@ func TestDelete(t *testing.T) {
 
 func TestPersist(t *testing.T) {
 	s, afs := setup()
-	path1 := "/path/to/file"
+	path1 := "/path/to/file.jpg"
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	ext := ".jpg"
-	fi1 := storage.NewFileInfo(path1, ext,
+
+	fi1 := storage.NewFileInfo(path1,
 		func(string) ([]byte, error) { return make([]byte, 0), nil },
 		func([]byte) string { return "abc111" })
 	p1 := metadata.NewPhoto(
@@ -164,10 +164,10 @@ func TestPersist(t *testing.T) {
 func TestReload(t *testing.T) {
 	dbPath := "mirror.db"
 	s, afs := setup()
-	path1 := "/path/to/file"
-	ext := ".jpg"
+	path1 := "/path/to/file.jpg"
+
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
-	fi1 := storage.NewFileInfo(path1, ext,
+	fi1 := storage.NewFileInfo(path1,
 		func(string) ([]byte, error) { return make([]byte, 0), nil },
 		func([]byte) string { return "abc111" })
 	p1 := metadata.NewPhoto(

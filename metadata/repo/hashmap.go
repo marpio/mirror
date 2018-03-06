@@ -72,8 +72,8 @@ func (s *HashmapStore) Reload(ctx context.Context) error {
 	return nil
 }
 
-func (s *HashmapStore) GetByDir(dir string) ([]mirror.RepoEntry, error) {
-	var res = make([]mirror.RepoEntry, 0)
+func (s *HashmapStore) GetByDir(dir string) ([]mirror.RemotePhoto, error) {
+	var res = make([]mirror.RemotePhoto, 0)
 	if p, ok := s.data[dir]; ok {
 		for _, x := range p {
 			res = append(res, x)
@@ -82,7 +82,7 @@ func (s *HashmapStore) GetByDir(dir string) ([]mirror.RepoEntry, error) {
 	return res, nil
 }
 
-func (s *HashmapStore) GetByDirAndId(dir, id string) (mirror.RepoEntry, error) {
+func (s *HashmapStore) GetByDirAndId(dir, id string) (mirror.RemotePhoto, error) {
 	if p, ok := s.data[dir]; ok {
 		if f, ok := p[id]; ok {
 			return f, nil
@@ -111,7 +111,7 @@ func (s *HashmapStore) getByID(id string) *entry {
 	return nil
 }
 
-func (s *HashmapStore) Add(it mirror.RepoEntry) error {
+func (s *HashmapStore) Add(it mirror.RemotePhoto) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	x := &entry{FileID: it.ID(), Directory: it.Dir()}
@@ -133,8 +133,8 @@ func (s *HashmapStore) Persist(ctx context.Context) error {
 	return nil
 }
 
-func (s *HashmapStore) GetAll() []mirror.RepoEntry {
-	var res = make([]mirror.RepoEntry, 0)
+func (s *HashmapStore) GetAll() []mirror.RemotePhoto {
+	var res = make([]mirror.RemotePhoto, 0)
 	for _, d := range s.data {
 		for _, p := range d {
 			res = append(res, p)

@@ -19,7 +19,7 @@ type StorageReader interface {
 }
 
 type StorageReadSeeker interface {
-	NewReadSeeker(ctx context.Context, path string) (ReadCloseSeeker, error)
+	NewReader(ctx context.Context, path string) (ReadCloseSeeker, error)
 }
 
 type StorageWriter interface {
@@ -28,7 +28,6 @@ type StorageWriter interface {
 }
 
 type ReadOnlyStorage interface {
-	StorageReader
 	StorageReadSeeker
 	SearchFiles(rootPath string, fileExt ...string) []FileInfo
 }
@@ -44,38 +43,37 @@ type MetadataRepo interface {
 }
 
 type MetadataRepoWriter interface {
-	Add(item RepoEntry) error
+	Add(item RemotePhoto) error
 	Delete(id string) error
 	Persist(ctx context.Context) error
 }
 
 type MetadataRepoReader interface {
-	GetAll() []RepoEntry
+	GetAll() []RemotePhoto
 	Exists(id string) (bool, error)
-	GetByDir(name string) ([]RepoEntry, error)
-	GetByDirAndId(dir, id string) (RepoEntry, error)
+	GetByDir(name string) ([]RemotePhoto, error)
+	GetByDirAndId(dir, id string) (RemotePhoto, error)
 	GetDirs() ([]string, error)
 	Reload(ctx context.Context) error
 }
 
 type Extractor interface {
-	Extract(ctx context.Context, logctx log.Interface, photos []FileInfo) []Photo
-}
-
-type RepoEntry interface {
-	ID() string
-	ThumbID() string
-	Dir() string
+	Extract(ctx context.Context, logctx log.Interface, photos []FileInfo) []LocalPhoto
 }
 
 type FileInfo interface {
 	ID() string
 	FilePath() string
-	FileExt() string
 }
 
-type Photo interface {
-	RepoEntry
+type RemotePhoto interface {
+	ID() string
+	ThumbID() string
+	Dir() string
+}
+
+type LocalPhoto interface {
+	RemotePhoto
 	FilePath() string
 	CreatedAt() time.Time
 	SetCreatedAt(t time.Time)

@@ -98,13 +98,12 @@ func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	afs := afero.NewOsFs()
 	rs := NewStorageReadSeeker(afs)
 	ex := NewExtractor(rs)
-	ext := ".jpg"
 	path1 := "../test/sample.jpg"
 	path2 := "../test/sample2.jpg"
-	fi1 := storage.NewFileInfo(path1, ext,
+	fi1 := storage.NewFileInfo(path1,
 		func(string) ([]byte, error) { return ioutil.ReadFile(path1) },
 		func([]byte) string { return "abc111" })
-	fi2 := storage.NewFileInfo(path2, ext,
+	fi2 := storage.NewFileInfo(path2,
 		func(string) ([]byte, error) { return ioutil.ReadFile(path2) },
 		func([]byte) string { return "abc222" })
 	files := []mirror.FileInfo{fi1, fi2}
@@ -124,6 +123,6 @@ type storageReadSeekerMock struct {
 func NewStorageReadSeeker(fs afero.Fs) *storageReadSeekerMock {
 	return &storageReadSeekerMock{fs: fs}
 }
-func (m *storageReadSeekerMock) NewReadSeeker(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
+func (m *storageReadSeekerMock) NewReader(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
 	return m.fs.Open(path)
 }

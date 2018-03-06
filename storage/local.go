@@ -2,11 +2,9 @@ package storage
 
 import (
 	"context"
-	"io"
 	"io/ioutil"
 	"log"
 	"os"
-	"path"
 	"path/filepath"
 	"strings"
 
@@ -26,10 +24,6 @@ func (fi *fileInfo) FilePath() string {
 	return fi.filePath
 }
 
-func (fi *fileInfo) FileExt() string {
-	return fi.fileExt
-}
-
 func (fi *fileInfo) ID() string {
 	if fi.id != "" {
 		return fi.id
@@ -42,12 +36,11 @@ func (fi *fileInfo) ID() string {
 	return fi.id
 }
 
-func NewFileInfo(filePath string, fileExt string, readFile func(string) ([]byte, error), generateFileHash func([]byte) string) mirror.FileInfo {
+func NewFileInfo(filePath string, readFile func(string) ([]byte, error), generateFileHash func([]byte) string) mirror.FileInfo {
 	return &fileInfo{
 		readFile:         readFile,
 		generateFileHash: generateFileHash,
 		filePath:         filePath,
-		fileExt:          fileExt,
 	}
 }
 
@@ -60,11 +53,7 @@ func NewLocal(fs afero.Fs, generateFileHash func([]byte) string) *ReadOnlyLocalS
 	return &ReadOnlyLocalStorage{fs: fs, generateFileHash: generateFileHash}
 }
 
-func (repo *ReadOnlyLocalStorage) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
-	return repo.fs.Open(path)
-}
-
-func (repo *ReadOnlyLocalStorage) NewReadSeeker(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
+func (repo *ReadOnlyLocalStorage) NewReader(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
 	return repo.fs.Open(path)
 }
 
@@ -87,7 +76,7 @@ func (repo *ReadOnlyLocalStorage) SearchFiles(rootPath string, fileExt ...string
 		for _, ext := range fileExt {
 			hasExt = strings.HasSuffix(strings.ToLower(fi.Name()), ext)
 			if hasExt {
-				finf := NewFileInfo(pth, path.Ext(pth), ioutil.ReadFile, repo.generateFileHash)
+				finf := NewFileInfo(pth, ioutil.ReadFile, repo.generateFileHash)
 				files = append(files, finf)
 				break
 			}

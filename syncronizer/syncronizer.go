@@ -21,6 +21,7 @@ type Service struct {
 	metadataextr         mirror.Extractor
 	maxConcurrentUploads int
 	timeout              time.Duration
+	fileExts             []string
 }
 
 type option func(*Service)
@@ -33,6 +34,12 @@ func WithMaxConcurrentUploads(maxConcurrentUploads int) option {
 func WithTimeout(t time.Duration) option {
 	return func(s *Service) {
 		s.timeout = t
+	}
+}
+
+func WithFileExts(exts ...string) option {
+	return func(s *Service) {
+		s.fileExts = exts
 	}
 }
 
@@ -49,6 +56,7 @@ func New(remotestorage mirror.Storage,
 		metadataextr:         metadataextr,
 		maxConcurrentUploads: 10,
 		timeout:              1 * time.Minute,
+		fileExts:             []string{".jpg", ".jpeg", ".nef"},
 	}
 	for _, opt := range options {
 		opt(s)
@@ -57,20 +65,14 @@ func New(remotestorage mirror.Storage,
 }
 
 func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath string) {
-	logctx.Info("starting")
-	files := s.localstrg.SearchFiles(rootPath, ".jpg", ".jpeg", ".nef")
-	logctx.Infof("no. of files: %d", len(files))
-	pathsGroupedByDir := storage.GroupByDir(files)
-	unsyncedFilesByDir := s.getUnsyncedFiles(ctx, logctx, pathsGroupedByDir)
-	photosStream := s.ExtractMetadata(ctx, logctx, unsyncedFilesByDir)
-	syncedPhotosStream := s.syncWithRemoteStorage(ctx, logctx, photosStream)
-	s.saveToDb(ctx, syncedPhotosStream)
-	allFiles := make(map[string]struct{})
-	for _, fi := range files {
-		if _, ok := allFiles[fi.ID()]; !ok {
-			allFiles[fi.ID()] = struct{}{}
-		}
-	}
+	files := s.localstrg.SearchFiles(rootPath, s.fileExts...)
+	logctx.Infof("found %d files to sync", len(files))
+
+	unsyncedFilesByDir := s.getUnsyncedFiles(ctx, logctx, storage.GroupByDir(files))
+	photosStream := s.extractMetadata(ctx, logctx, unsyncedFilesByDir)
+	syncedPhotosStream := s.syncRemoteStorage(ctx, logctx, photosStream)
+
+	s.syncMetadataRepo(ctx, files, syncedPhotosStream)
 }
 
 func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pathsGroupedByDir map[string][]mirror.FileInfo) <-chan []mirror.FileInfo {
@@ -112,8 +114,8 @@ func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pa
 	return fileInfoStream
 }
 
-func (s *Service) ExtractMetadata(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []mirror.FileInfo) <-chan mirror.Photo {
-	metadataStream := make(chan mirror.Photo, 2*s.maxConcurrentUploads)
+func (s *Service) extractMetadata(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []mirror.FileInfo) <-chan mirror.LocalPhoto {
+	metadataStream := make(chan mirror.LocalPhoto, 2*s.maxConcurrentUploads)
 
 	go func() {
 		defer close(metadataStream)
@@ -134,26 +136,8 @@ func (s *Service) ExtractMetadata(ctx context.Context, logctx log.Interface, fil
 	return metadataStream
 }
 
-func (s *Service) saveToDb(ctx context.Context, uploadedPhotosStream <-chan mirror.Photo) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case p, more := <-uploadedPhotosStream:
-			if more {
-				s.metadataStore.Add(p)
-			} else {
-				if err := s.metadataStore.Persist(ctx); err != nil {
-					log.Fatalf("error commiting to DB %v", err)
-				}
-				return
-			}
-		}
-	}
-}
-
-func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interface, metadataStream <-chan mirror.Photo) <-chan mirror.Photo {
-	uploadedPhotosStream := make(chan mirror.Photo)
+func (s *Service) syncRemoteStorage(ctx context.Context, logctx log.Interface, metadataStream <-chan mirror.LocalPhoto) <-chan mirror.LocalPhoto {
+	uploadedPhotosStream := make(chan mirror.LocalPhoto)
 	logctx = logctx.WithFields(log.Fields{
 		"action": "sync_with_remote_storage",
 	})
@@ -172,7 +156,7 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 				}
 				limiter <- struct{}{}
 				wg.Add(1)
-				go func(m mirror.Photo) {
+				go func(m mirror.LocalPhoto) {
 					defer wg.Done()
 					defer func() { <-limiter }()
 					logctx = logctx.WithFields(log.Fields{
@@ -192,7 +176,7 @@ func (s *Service) syncWithRemoteStorage(ctx context.Context, logctx log.Interfac
 	return uploadedPhotosStream
 }
 
-func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img mirror.Photo) error {
+func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img mirror.LocalPhoto) error {
 	f, err := img.NewJpgReader()
 	if err != nil {
 		logctx.WithError(err).Errorf("error uploading file %s", img.FilePath)
@@ -215,7 +199,7 @@ func (s *Service) uploadPhoto(ctx context.Context, logctx log.Interface, img mir
 	return nil
 }
 
-func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img mirror.Photo) {
+func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img mirror.LocalPhoto) {
 	w := s.remotestrg.NewWriter(ctx, img.ThumbID())
 	_, err := io.Copy(w, bytes.NewReader(img.Thumbnail()))
 	if err != nil {
@@ -226,4 +210,56 @@ func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img mir
 		logctx.WithError(err).Error("error closing writer")
 		return
 	}
+}
+
+func (s *Service) syncMetadataRepo(ctx context.Context, files []mirror.FileInfo, uploadedPhotosStream <-chan mirror.LocalPhoto) {
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		s.addNewFiles(ctx, uploadedPhotosStream)
+	}()
+	go func() {
+		defer wg.Done()
+		s.removeDeletedFiles(ctx, files)
+	}()
+	wg.Wait()
+	s.metadataStore.Persist(ctx)
+}
+
+func (s *Service) addNewFiles(ctx context.Context, uploadedPhotosStream <-chan mirror.LocalPhoto) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case p, more := <-uploadedPhotosStream:
+			if more {
+				s.metadataStore.Add(p)
+			} else {
+				return
+			}
+		}
+	}
+}
+
+func (s *Service) removeDeletedFiles(ctx context.Context, localFiles []mirror.FileInfo) {
+	localFileIDs := make(map[string]struct{})
+	for _, fi := range localFiles {
+		if _, ok := localFileIDs[fi.ID()]; !ok {
+			localFileIDs[fi.ID()] = struct{}{}
+		}
+	}
+	var wg sync.WaitGroup
+	for _, item := range s.metadataStore.GetAll() {
+		if _, ok := localFileIDs[item.ID()]; !ok {
+			wg.Add(1)
+			go func(id string) {
+				defer wg.Done()
+				if err := s.remotestrg.Delete(ctx, id); err == nil {
+					s.metadataStore.Delete(id)
+				}
+			}(item.ID())
+		}
+	}
+	wg.Wait()
 }
