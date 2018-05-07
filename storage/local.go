@@ -67,10 +67,6 @@ func (repo *ReadOnlyLocalStorage) FindFiles(dir string, fileExt ...string) []mir
 		return os.Open(p)
 	}
 	err := afero.Walk(repo.fs, dir, func(pth string, fi os.FileInfo, err error) error {
-
-		if err != nil {
-			log.Printf("Error while walking the directory structure: %v", err)
-		}
 		isDir, err := afero.IsDir(repo.fs, pth)
 
 		if err != nil {
