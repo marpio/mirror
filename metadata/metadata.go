@@ -68,10 +68,10 @@ func (p *Photo) Dir() string {
 }
 
 type Extractor struct {
-	rd mirror.StorageReadSeeker
+	rd mirror.StorageReader
 }
 
-func NewExtractor(rd mirror.StorageReadSeeker) *Extractor {
+func NewExtractor(rd mirror.StorageReader) *Extractor {
 	return &Extractor{rd: rd}
 }
 
@@ -82,8 +82,8 @@ func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []m
 	for i, ph := range photos {
 		go func(i int, ph mirror.FileInfo) {
 			defer wg.Done()
-			logctx = log.WithFields(log.Fields{
-				"photo_path": ph.FilePath,
+			logger := log.WithFields(log.Fields{
+				"photo_path": ph.FilePath(),
 			})
 			var p mirror.LocalPhoto
 			var err error
@@ -92,19 +92,18 @@ func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []m
 			case ".nef":
 				p, err = extractMetadataNEF(ctx, ph, s.rd)
 			case ".jpg", ".jpeg":
-				p, err = extractMetadataJpg(ctx, logctx, ph, s.rd)
+				p, err = extractMetadataJpg(ctx, logger, ph, s.rd)
 			default:
 				err = fmt.Errorf("not supported format %s", ext)
 			}
 			if err != nil {
-				logctx.Errorf("error extracting metadata %v", err)
+				logger.Errorf("error extracting metadata %v", err)
 				return
 			}
 			md[i] = p
 		}(i, ph)
 	}
 	wg.Wait()
-
 	dirCreatedAt := time.Time{}
 	res := make([]mirror.LocalPhoto, 0)
 	for _, p := range md {
@@ -124,7 +123,7 @@ func (s Extractor) Extract(ctx context.Context, logctx log.Interface, photos []m
 	return res
 }
 
-func extractMetadataNEF(ctx context.Context, fi mirror.FileInfo, rs mirror.StorageReadSeeker) (mirror.LocalPhoto, error) {
+func extractMetadataNEF(ctx context.Context, fi mirror.FileInfo, rs mirror.StorageReader) (mirror.LocalPhoto, error) {
 	f, err := rs.NewReader(ctx, fi.FilePath())
 	if err != nil {
 		return nil, err
@@ -135,6 +134,7 @@ func extractMetadataNEF(ctx context.Context, fi mirror.FileInfo, rs mirror.Stora
 	if err != nil {
 		return nil, err
 	}
+
 	thumb, err := extractThumbNEF(fi.FilePath())
 	if err != nil {
 		return nil, err
@@ -144,24 +144,29 @@ func extractMetadataNEF(ctx context.Context, fi mirror.FileInfo, rs mirror.Stora
 	return p, nil
 }
 
-func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi mirror.FileInfo, rs mirror.StorageReadSeeker) (mirror.LocalPhoto, error) {
+func extractMetadataJpg(ctx context.Context, logctx log.Interface, fi mirror.FileInfo, rs mirror.StorageReader) (mirror.LocalPhoto, error) {
 	f, err := rs.NewReader(ctx, fi.FilePath())
 	if err != nil {
-		logctx.Infof("error %v", fi.FilePath())
+		logctx.Errorf("error %v", fi.FilePath())
 		return nil, err
 	}
 	defer f.Close()
 
 	createdAt, err := extractCreatedAt(f)
 	if err != nil {
-		logctx.Infof("error %v", fi.FilePath())
+		logctx.Errorf("error %v", fi.FilePath())
 		return nil, err
 	}
-
-	f.Seek(0, 0)
+	s, ok := f.(io.Seeker)
+	if ok {
+		s.Seek(0, 0)
+	} else {
+		f.Close()
+		f, err = rs.NewReader(ctx, fi.FilePath())
+	}
 	thumb, err := extractThumb(f)
 	if err != nil {
-		logctx.Infof("error %v", fi.FilePath())
+		logctx.Errorf("error %v", fi.FilePath())
 		return nil, err
 	}
 	readerFn := func() (io.ReadCloser, error) { return rs.NewReader(ctx, fi.FilePath()) }
@@ -201,7 +206,7 @@ func extractJpgNEF(path string) (io.ReadCloser, error) {
 	return r, nil
 }
 
-func extractCreatedAt(r mirror.ReadCloseSeeker) (time.Time, error) {
+func extractCreatedAt(r io.Reader) (time.Time, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return time.Time{}, err
@@ -213,7 +218,7 @@ func extractCreatedAt(r mirror.ReadCloseSeeker) (time.Time, error) {
 	return imgCreatedAt, nil
 }
 
-func extractThumb(r io.ReadSeeker) ([]byte, error) {
+func extractThumb(r io.Reader) ([]byte, error) {
 	x, err := exif.Decode(r)
 	if err != nil {
 		return nil, err
@@ -229,20 +234,31 @@ func extractThumb(r io.ReadSeeker) ([]byte, error) {
 	return thumbnail, nil
 }
 
-func resizeImg(r io.ReadSeeker) ([]byte, error) {
-	r.Seek(0, 0)
+func resizeImg(r io.Reader) ([]byte, error) {
+	s, ok := r.(io.Seeker)
+	if ok {
+		s.Seek(0, 0)
+	} else {
+		return nil, fmt.Errorf("r must implement io.Seeker for resize to work")
+	}
+	s.Seek(0, 0)
 	img, err := jpeg.Decode(r)
 	if err != nil {
 		return nil, err
 	}
-	m := resize.Thumbnail(200, 200, img, resize.NearestNeighbor)
+	m := resize.Thumbnail(160, 120, img, resize.NearestNeighbor)
 	var b bytes.Buffer
 	writer := bufio.NewWriter(&b)
-	if err := jpeg.Encode(writer, m, &jpeg.Options{Quality: 50}); err != nil {
+	if err := jpeg.Encode(writer, m, &jpeg.Options{Quality: 40}); err != nil {
 		return nil, err
 	}
 	if err := writer.Flush(); err != nil {
 		return nil, err
 	}
 	return b.Bytes(), nil
+}
+
+func isSeeker(r io.Reader) bool {
+	_, ok := r.(io.Seeker)
+	return ok
 }

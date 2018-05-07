@@ -62,10 +62,6 @@ func runSync(dir string) {
 		json.New(logFile),
 	))
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	defer close(sigs)
-
 	ctx := context.Background()
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -86,11 +82,14 @@ func runSync(dir string) {
 	if err != nil {
 		log.Fatalf("error creating metadata repository: %v", err)
 	}
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT)
+	defer close(sigs)
 	go func() {
 		for {
 			select {
 			case <-sigs:
-				logctx.Warn("SIGINT or SIGTERM - saving and terminating...")
+				logctx.Warn("SIGINT - saving and terminating...")
 				repo.Persist(ctx)
 				cancel()
 				return

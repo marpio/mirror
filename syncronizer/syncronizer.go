@@ -5,13 +5,14 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
 	"github.com/apex/log"
 
 	"github.com/marpio/mirror"
-	"github.com/marpio/mirror/storage"
 )
 
 type Service struct {
@@ -65,10 +66,10 @@ func New(remotestorage mirror.Storage,
 }
 
 func (s *Service) Execute(ctx context.Context, logctx log.Interface, rootPath string) {
-	files := s.localstrg.SearchFiles(rootPath, s.fileExts...)
+	files := s.localstrg.FindFiles(rootPath, s.fileExts...)
 	logctx.Infof("found %d files to sync", len(files))
-
-	unsyncedFilesByDir := s.getUnsyncedFiles(ctx, logctx, storage.GroupByDir(files))
+	printMemUsage("after search files")
+	unsyncedFilesByDir := s.getUnsyncedFiles(ctx, logctx, GroupByDir(files))
 	photosStream := s.extractMetadata(ctx, logctx, unsyncedFilesByDir)
 	syncedPhotosStream := s.syncRemoteStorage(ctx, logctx, photosStream)
 
@@ -107,6 +108,7 @@ func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pa
 				}
 			}
 			if send {
+				printMemUsage("getUnsyncedFiles")
 				fileInfoStream <- newFiles
 			}
 		}
@@ -115,7 +117,7 @@ func (s *Service) getUnsyncedFiles(ctx context.Context, logctx log.Interface, pa
 }
 
 func (s *Service) extractMetadata(ctx context.Context, logctx log.Interface, filesByDirStream <-chan []mirror.FileInfo) <-chan mirror.LocalPhoto {
-	metadataStream := make(chan mirror.LocalPhoto, 2*s.maxConcurrentUploads)
+	metadataStream := make(chan mirror.LocalPhoto)
 
 	go func() {
 		defer close(metadataStream)
@@ -125,10 +127,13 @@ func (s *Service) extractMetadata(ctx context.Context, logctx log.Interface, fil
 			case <-ctx.Done():
 				return
 			default:
-				md := s.metadataextr.Extract(ctx, logctx, paths)
+				c, cancel := context.WithCancel(ctx)
+				md := s.metadataextr.Extract(c, logctx, paths)
 				for _, p := range md {
 					metadataStream <- p
 				}
+				printMemUsage("extractMetadata")
+				cancel()
 			}
 		}
 		wg.Wait()
@@ -162,12 +167,16 @@ func (s *Service) syncRemoteStorage(ctx context.Context, logctx log.Interface, m
 					logctx = logctx.WithFields(log.Fields{
 						"photo_path": m.FilePath(),
 					})
-					if err := s.uploadPhoto(ctx, logctx, m); err == nil {
-						s.uploadThumb(ctx, logctx, m)
+					c, cancel := context.WithCancel(ctx)
+					if err := s.uploadPhoto(c, logctx, m); err == nil {
+						c, cancel := context.WithCancel(ctx)
+						s.uploadThumb(c, logctx, m)
+						cancel()
 						uploadedPhotosStream <- m
 					} else {
 						logctx.Errorf("error uploading file: %v", err)
 					}
+					cancel()
 				}(metaData)
 			}
 		}
@@ -213,17 +222,7 @@ func (s *Service) uploadThumb(ctx context.Context, logctx log.Interface, img mir
 }
 
 func (s *Service) syncMetadataRepo(ctx context.Context, files []mirror.FileInfo, uploadedPhotosStream <-chan mirror.LocalPhoto) {
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go func() {
-		defer wg.Done()
-		s.addNewFiles(ctx, uploadedPhotosStream)
-	}()
-	go func() {
-		defer wg.Done()
-		s.removeDeletedFiles(ctx, files)
-	}()
-	wg.Wait()
+	s.addNewFiles(ctx, uploadedPhotosStream)
 	s.metadataStore.Persist(ctx)
 }
 
@@ -232,34 +231,42 @@ func (s *Service) addNewFiles(ctx context.Context, uploadedPhotosStream <-chan m
 		select {
 		case <-ctx.Done():
 			return
-		case p, more := <-uploadedPhotosStream:
-			if more {
-				s.metadataStore.Add(p)
-			} else {
+		case p, ok := <-uploadedPhotosStream:
+			if !ok {
 				return
 			}
+			s.metadataStore.Add(p)
 		}
 	}
 }
 
-func (s *Service) removeDeletedFiles(ctx context.Context, localFiles []mirror.FileInfo) {
-	localFileIDs := make(map[string]struct{})
-	for _, fi := range localFiles {
-		if _, ok := localFileIDs[fi.ID()]; !ok {
-			localFileIDs[fi.ID()] = struct{}{}
+func GroupByDir(files []mirror.FileInfo) map[string][]mirror.FileInfo {
+	filesGroupedByDir := make(map[string][]mirror.FileInfo)
+	for _, p := range files {
+		dir := filepath.Dir(p.FilePath())
+		if v, ok := filesGroupedByDir[dir]; ok {
+			v = append(v, p)
+			filesGroupedByDir[dir] = v
+		} else {
+			ps := make([]mirror.FileInfo, 0)
+			ps = append(ps, p)
+			filesGroupedByDir[dir] = ps
 		}
 	}
-	var wg sync.WaitGroup
-	for _, item := range s.metadataStore.GetAll() {
-		if _, ok := localFileIDs[item.ID()]; !ok {
-			wg.Add(1)
-			go func(id string) {
-				defer wg.Done()
-				if err := s.remotestrg.Delete(ctx, id); err == nil {
-					s.metadataStore.Delete(id)
-				}
-			}(item.ID())
-		}
-	}
-	wg.Wait()
+	return filesGroupedByDir
+}
+
+func printMemUsage(where string) {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	fmt.Println(where)
+	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
+	fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
+	fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
+	fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
+	fmt.Printf("\tNumGC = %v\n", m.NumGC)
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }

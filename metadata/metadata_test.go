@@ -3,6 +3,7 @@ package metadata
 import (
 	"bytes"
 	"context"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -101,11 +102,11 @@ func TestCreatedAt_Photo_without_metadata(t *testing.T) {
 	path1 := "../test/sample.jpg"
 	path2 := "../test/sample2.jpg"
 	fi1 := storage.NewFileInfo(path1,
-		func(string) ([]byte, error) { return ioutil.ReadFile(path1) },
-		func([]byte) string { return "abc111" })
+		func(string) (io.ReadCloser, error) { return os.Open(path1) },
+		func(io.Reader) (string, error) { return "abc111", nil })
 	fi2 := storage.NewFileInfo(path2,
-		func(string) ([]byte, error) { return ioutil.ReadFile(path2) },
-		func([]byte) string { return "abc222" })
+		func(string) (io.ReadCloser, error) { return os.Open(path2) },
+		func(io.Reader) (string, error) { return "abc222", nil })
 	files := []mirror.FileInfo{fi1, fi2}
 	ch := ex.Extract(context.Background(), log.Log, files)
 	for _, p := range ch {
@@ -123,6 +124,6 @@ type storageReadSeekerMock struct {
 func NewStorageReadSeeker(fs afero.Fs) *storageReadSeekerMock {
 	return &storageReadSeekerMock{fs: fs}
 }
-func (m *storageReadSeekerMock) NewReader(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
+func (m *storageReadSeekerMock) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
 	return m.fs.Open(path)
 }

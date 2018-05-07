@@ -18,23 +18,14 @@ type StorageReader interface {
 	NewReader(ctx context.Context, path string) (io.ReadCloser, error)
 }
 
-type StorageReadSeeker interface {
-	NewReader(ctx context.Context, path string) (ReadCloseSeeker, error)
-}
-
 type StorageWriter interface {
 	NewWriter(ctx context.Context, path string) io.WriteCloser
 	Delete(ctx context.Context, path string) error
 }
 
 type ReadOnlyStorage interface {
-	StorageReadSeeker
-	SearchFiles(rootPath string, fileExt ...string) []FileInfo
-}
-
-type ReadCloseSeeker interface {
-	io.ReadCloser
-	io.Seeker
+	StorageReader
+	FindFiles(rootPath string, fileExt ...string) []FileInfo
 }
 
 type MetadataRepo interface {

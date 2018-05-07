@@ -144,6 +144,8 @@ func (s *HashmapStore) GetAll() []mirror.RemotePhoto {
 }
 
 func (s *HashmapStore) Delete(id string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
 	for _, d := range s.data {
 		if _, ok := d[id]; ok {
 			delete(d, id)

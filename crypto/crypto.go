@@ -6,14 +6,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"log"
 
 	"golang.org/x/crypto/nacl/secretbox"
 )
 
-func GenerateSha256(data []byte) string {
-	h := sha256.Sum256(data)
-	return fmt.Sprintf("%x", h)
+func GenerateSha256(r io.Reader) (string, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
 const keyLen = 32
@@ -74,6 +76,7 @@ func (s *srv) Seal(plaintxt []byte) ([]byte, error) {
 	}
 	rounds := len(plaintxt) / s.blockSize
 	rem := len(plaintxt) % s.blockSize
+
 	if rounds != 0 && rem != 0 {
 		return nil, fmt.Errorf("")
 	}
@@ -108,10 +111,10 @@ func (s *srv) encrypt(plaintxt []byte) ([]byte, error) {
 
 func (s *srv) Open(encrypted []byte) ([]byte, error) {
 	var decryptNonce [nonceLen]byte
+
 	copy(decryptNonce[:], encrypted[:nonceLen])
 	decrypted, ok := secretbox.Open(nil, encrypted[nonceLen:], &decryptNonce, &s.secretKey)
 	if !ok {
-		log.Printf("Encrypted len: %v", len(encrypted))
 		return nil, fmt.Errorf("Could not decrypt data")
 	}
 	return decrypted, nil

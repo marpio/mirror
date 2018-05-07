@@ -44,11 +44,11 @@ func TestExists(t *testing.T) {
 	path2 := "/path/to/file2.jpg"
 
 	fi1 := storage.NewFileInfo(path1,
-		func(string) ([]byte, error) { return make([]byte, 0), nil },
-		func([]byte) string { return "abc111" })
+		func(string) (io.ReadCloser, error) { return nopCloser{bytes.NewBuffer(make([]byte, 0))}, nil },
+		func(io.Reader) (string, error) { return "abc111", nil })
 	fi2 := storage.NewFileInfo(path2,
-		func(string) ([]byte, error) { return make([]byte, 0), nil },
-		func([]byte) string { return "abc222" })
+		func(string) (io.ReadCloser, error) { return nopCloser{bytes.NewBuffer(make([]byte, 0))}, nil },
+		func(io.Reader) (string, error) { return "abc222", nil })
 
 	ph1 := metadata.NewPhoto(
 		fi1,
@@ -72,8 +72,8 @@ func TestGetByDir(t *testing.T) {
 
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 	fi1 := storage.NewFileInfo(path1,
-		func(string) ([]byte, error) { return make([]byte, 0), nil },
-		func([]byte) string { return "abc111" })
+		func(string) (io.ReadCloser, error) { return nopCloser{bytes.NewBuffer(make([]byte, 0))}, nil },
+		func(io.Reader) (string, error) { return "abc111", nil })
 	ph := metadata.NewPhoto(
 		fi1,
 		&metadata.Metadata{CreatedAt: m},
@@ -94,11 +94,11 @@ func TestGetDirs(t *testing.T) {
 	path2 := "/path/to/file2.jpg"
 
 	fi1 := storage.NewFileInfo(path1,
-		func(string) ([]byte, error) { return make([]byte, 0), nil },
-		func([]byte) string { return "abc111" })
+		func(string) (io.ReadCloser, error) { return nopCloser{bytes.NewBuffer(make([]byte, 0))}, nil },
+		func(io.Reader) (string, error) { return "abc111", nil })
 	fi2 := storage.NewFileInfo(path2,
-		func(string) ([]byte, error) { return make([]byte, 0), nil },
-		func([]byte) string { return "abc222" })
+		func(string) (io.ReadCloser, error) { return nopCloser{bytes.NewBuffer(make([]byte, 0))}, nil },
+		func(io.Reader) (string, error) { return "abc222", nil })
 	ph1 := metadata.NewPhoto(
 		fi1,
 		&metadata.Metadata{CreatedAt: m},
@@ -124,8 +124,8 @@ func TestDelete(t *testing.T) {
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 
 	fi1 := storage.NewFileInfo(path1,
-		func(string) ([]byte, error) { return make([]byte, 0), nil },
-		func([]byte) string { return "abc111" })
+		func(string) (io.ReadCloser, error) { return nopCloser{bytes.NewBuffer(make([]byte, 0))}, nil },
+		func(io.Reader) (string, error) { return "abc111", nil })
 	p1 := metadata.NewPhoto(
 		fi1,
 		&metadata.Metadata{CreatedAt: m},
@@ -144,8 +144,8 @@ func TestPersist(t *testing.T) {
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 
 	fi1 := storage.NewFileInfo(path1,
-		func(string) ([]byte, error) { return make([]byte, 0), nil },
-		func([]byte) string { return "abc111" })
+		func(string) (io.ReadCloser, error) { return nopCloser{bytes.NewBuffer(make([]byte, 0))}, nil },
+		func(io.Reader) (string, error) { return "abc111", nil })
 	p1 := metadata.NewPhoto(
 		fi1,
 		&metadata.Metadata{CreatedAt: m},
@@ -168,8 +168,8 @@ func TestReload(t *testing.T) {
 
 	m := time.Date(2017, 5, 1, 0, 0, 0, 0, time.UTC)
 	fi1 := storage.NewFileInfo(path1,
-		func(string) ([]byte, error) { return make([]byte, 0), nil },
-		func([]byte) string { return "abc111" })
+		func(string) (io.ReadCloser, error) { return nopCloser{bytes.NewBuffer(make([]byte, 0))}, nil },
+		func(io.Reader) (string, error) { return "abc111", nil })
 	p1 := metadata.NewPhoto(
 		fi1,
 		&metadata.Metadata{CreatedAt: m},

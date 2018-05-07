@@ -2,42 +2,46 @@ package storage
 
 import (
 	"context"
-	"io/ioutil"
+	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/marpio/mirror"
 	"github.com/spf13/afero"
 )
 
-type fileInfo struct {
+type FileInfo struct {
 	id               string
-	readFile         func(string) ([]byte, error)
-	generateFileHash func([]byte) string
+	readFile         func(string) (io.ReadCloser, error)
+	generateFileHash func(r io.Reader) (string, error)
 	filePath         string
 	fileExt          string
 }
 
-func (fi *fileInfo) FilePath() string {
+func (fi FileInfo) FilePath() string {
 	return fi.filePath
 }
 
-func (fi *fileInfo) ID() string {
+func (fi FileInfo) ID() string {
 	if fi.id != "" {
 		return fi.id
 	}
-	b, err := fi.readFile(fi.filePath)
+	f, err := fi.readFile(fi.filePath)
 	if err != nil {
 		return ""
 	}
-	fi.id = fi.generateFileHash(b)
+	defer f.Close()
+	id, err := fi.generateFileHash(f)
+	if err != nil {
+		return ""
+	}
+	fi.id = id
 	return fi.id
 }
 
-func NewFileInfo(filePath string, readFile func(string) ([]byte, error), generateFileHash func([]byte) string) mirror.FileInfo {
-	return &fileInfo{
+func NewFileInfo(filePath string, readFile func(string) (io.ReadCloser, error), generateFileHash func(io.Reader) (string, error)) FileInfo {
+	return FileInfo{
 		readFile:         readFile,
 		generateFileHash: generateFileHash,
 		filePath:         filePath,
@@ -46,20 +50,23 @@ func NewFileInfo(filePath string, readFile func(string) ([]byte, error), generat
 
 type ReadOnlyLocalStorage struct {
 	fs               afero.Fs
-	generateFileHash func([]byte) string
+	generateFileHash func(io.Reader) (string, error)
 }
 
-func NewLocal(fs afero.Fs, generateFileHash func([]byte) string) *ReadOnlyLocalStorage {
+func NewLocal(fs afero.Fs, generateFileHash func(io.Reader) (string, error)) *ReadOnlyLocalStorage {
 	return &ReadOnlyLocalStorage{fs: fs, generateFileHash: generateFileHash}
 }
 
-func (repo *ReadOnlyLocalStorage) NewReader(ctx context.Context, path string) (mirror.ReadCloseSeeker, error) {
+func (repo *ReadOnlyLocalStorage) NewReader(ctx context.Context, path string) (io.ReadCloser, error) {
 	return repo.fs.Open(path)
 }
 
-func (repo *ReadOnlyLocalStorage) SearchFiles(rootPath string, fileExt ...string) []mirror.FileInfo {
+func (repo *ReadOnlyLocalStorage) FindFiles(dir string, fileExt ...string) []mirror.FileInfo {
 	files := make([]mirror.FileInfo, 0)
-	err := afero.Walk(repo.fs, rootPath, func(pth string, fi os.FileInfo, err error) error {
+	open := func(p string) (io.ReadCloser, error) {
+		return os.Open(p)
+	}
+	err := afero.Walk(repo.fs, dir, func(pth string, fi os.FileInfo, err error) error {
 
 		if err != nil {
 			log.Printf("Error while walking the directory structure: %v", err)
@@ -76,7 +83,7 @@ func (repo *ReadOnlyLocalStorage) SearchFiles(rootPath string, fileExt ...string
 		for _, ext := range fileExt {
 			hasExt = strings.HasSuffix(strings.ToLower(fi.Name()), ext)
 			if hasExt {
-				finf := NewFileInfo(pth, ioutil.ReadFile, repo.generateFileHash)
+				finf := NewFileInfo(pth, open, repo.generateFileHash)
 				files = append(files, finf)
 				break
 			}
@@ -92,20 +99,4 @@ func (repo *ReadOnlyLocalStorage) SearchFiles(rootPath string, fileExt ...string
 func GenerateUniqueFileName(prefix string, id string) string {
 	imgFileName := prefix + "_" + id
 	return imgFileName
-}
-
-func GroupByDir(files []mirror.FileInfo) map[string][]mirror.FileInfo {
-	filesGroupedByDir := make(map[string][]mirror.FileInfo)
-	for _, p := range files {
-		dir := filepath.Dir(p.FilePath())
-		if v, ok := filesGroupedByDir[dir]; ok {
-			v = append(v, p)
-			filesGroupedByDir[dir] = v
-		} else {
-			ps := make([]mirror.FileInfo, 0)
-			ps = append(ps, p)
-			filesGroupedByDir[dir] = ps
-		}
-	}
-	return filesGroupedByDir
 }
